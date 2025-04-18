@@ -142,6 +142,7 @@ document.addEventListener('DOMContentLoaded', () => {
 	    if (diff <= 90) ahead.push(dest);
 	    else            behind.push(dest);
 
+
 	  });
 
 	  // 6) Sort ascending
