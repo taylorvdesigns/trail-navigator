@@ -142,21 +142,6 @@ document.addEventListener('DOMContentLoaded', () => {
 	    if (diff <= 90) ahead.push(dest);
 	    else            behind.push(dest);
 
-	    // 5) Debug “Community Tap” only
-	    if (dest.name.includes('Community Tap - TR')) {
-	      console.log('📍 Community Tap debug:');
-	      console.log('  Real coords:     ', dest.coords);
-	      console.log('  Snapped on trail:', snappedLatLng);
-	      console.log('  Chosen distance: ', dist.toFixed(2), 'mi');
-
-	      L.circleMarker(snappedLatLng, {
-	        radius:      6,
-	        color:       'red',
-	        fillOpacity: 0.8
-	      })
-	      .addTo(map)
-	      .bindPopup('Snapped Point for Community Tap');
-	    }
 	  });
 
 	  // 6) Sort ascending
