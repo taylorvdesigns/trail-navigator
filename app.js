@@ -107,9 +107,7 @@ document.addEventListener('DOMContentLoaded', () => {
       // Build Turf lineString ([lng, lat])
       routeLine = turf.lineString(routeLatLngs.map(([lat, lng]) => [lng, lat]));
 	  
-	// 4) Set the header text to the route’s name
-	  const trailName = data.route.name || 'My Trail';
-	  document.getElementById('trail-header').textContent = trailName;
+
 	
     })
     .catch(err => console.error('Failed to load RWGPS route:', err));
