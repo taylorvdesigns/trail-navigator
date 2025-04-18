@@ -11,6 +11,18 @@ document.addEventListener('DOMContentLoaded', () => {
   let userBearing    = null;
   let poiData        = [];
   let lastDetailDest = null;
+  
+  // Your static custom spots
+  const baseEntryPoints = [
+    { name: "Between Swamp Rabbit Cafe and Unity", coords: [34.863381, -82.421034] },
+    { name: "Between Downtown and Unity",           coords: [34.848406, -82.404906] },
+    { name: "Furman Univ",                           coords: [34.926555, -82.443180] },
+    { name: "Greenville Tech",                       coords: [34.826607, -82.378538] }
+  ];
+
+  // Will hold [ Trail Start, ...baseEntryPoints, Trail End ]
+  let entryPoints = [];
+  
 
   // bottom‐tab buttons
   const tabMap    = document.getElementById('tab-map');
@@ -21,6 +33,9 @@ document.addEventListener('DOMContentLoaded', () => {
   const navOverlay    = document.getElementById('nav-overlay');
   const listOverlay   = document.getElementById('list-overlay');
   const detailOverlay = document.getElementById('detail-overlay');
+  const entryOverlay = document.getElementById('entry-overlay');
+  const entryList    = document.getElementById('entry-list');
+  
 
   // floating buttons
   const openNavBtn     = document.getElementById('open-nav');
@@ -68,6 +83,26 @@ document.addEventListener('DOMContentLoaded', () => {
       routeLatLngs = pts.map(p => [p.y, p.x]);
       L.polyline(routeLatLngs, { weight: 4, color: '#0077CC' }).addTo(map);
       map.fitBounds(routeLatLngs);
+	  
+	  // 1) Trail Start & End
+	  const startPt = { name: "Trail Start", coords: routeLatLngs[0] };
+	  const endPt   = { name: "Trail End",   coords: routeLatLngs[routeLatLngs.length - 1] };
+
+	  // 2) Compose the full list
+	  entryPoints = [
+	    startPt,
+	    ...baseEntryPoints,
+	    endPt
+	  ];
+
+	  // 3) Pre‑render so buttons exist when needed
+	  renderEntryList();
+
+	  // 4) Also update your visible trail name header
+	  const trailName = data.route.name || 'My Trail';
+	  document.getElementById('trail-header').textContent    = trailName;
+	  document.getElementById('nav-trail-header').textContent = trailName;
+	  
 
       // Build Turf lineString ([lng, lat])
       routeLine = turf.lineString(routeLatLngs.map(([lat, lng]) => [lng, lat]));
@@ -180,6 +215,24 @@ document.addEventListener('DOMContentLoaded', () => {
 	}
 
 
+	function renderEntryList() {
+	  entryList.innerHTML = '';
+	  entryPoints.forEach((pt, i) => {
+	    const btn = document.createElement('button');
+	    btn.textContent = pt.name;
+	    btn.dataset.index = i;
+	    entryList.appendChild(btn);
+	    btn.addEventListener('click', () => {
+	      // Override position and resume Nav
+	      lastPos = pt.coords.slice();
+	      userBearing = null;
+	      entryOverlay.style.display = 'none';
+	      navOverlay.style.display = 'block';
+	      setActiveTab(tabNav);
+	      updateNavView();
+	    });
+	  });
+	}
 
   
 
@@ -281,21 +334,43 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // ─── 6) REAL‑TIME LOCATION WATCHER ───────────────────────────────────
   if (navigator.geolocation) {
-    navigator.geolocation.watchPosition(
-      pos => {
-        const coords = [pos.coords.latitude, pos.coords.longitude];
-        if (!userMarker) {
-          userMarker = L.marker(coords).addTo(map).bindPopup('You are here').openPopup();
-        } else {
-          userMarker.setLatLng(coords);
-        }
-        if (lastPos) userBearing = getBearing(lastPos, coords);
-        lastPos = coords;
-        updateNavView();
-      },
-      err => console.warn(err),
-      { enableHighAccuracy: false }
-    );
+	  navigator.geolocation.watchPosition(
+	    pos => {
+	      const coords = [pos.coords.latitude, pos.coords.longitude];
+
+	      // 1) Snap & measure lateral offset from trail
+	      const userPt      = turf.point([ coords[1], coords[0] ]);
+	      const snappedUser = turf.nearestPointOnLine(routeLine, userPt, { units: 'kilometers' });
+	      const snapLat     = snappedUser.geometry.coordinates[1];
+	      const snapLng     = snappedUser.geometry.coordinates[0];
+	      const lateralKm   = haversineDistance(coords, [ snapLat, snapLng ]);
+
+	      // 2) If off‑trail (> 0.152 km ≈ 500 ft), show entry picker
+	      if (lateralKm > 0.152) {
+	        entryOverlay.style.display = 'block';
+	        return;  // skip updating map until user picks a point
+	      }
+
+	      // 3) Otherwise hide overlay and update real position
+	      entryOverlay.style.display = 'none';
+	      if (!userMarker) {
+	        userMarker = L.marker(coords)
+	          .addTo(map)
+	          .bindPopup('You are here')
+	          .openPopup();
+	      } else {
+	        userMarker.setLatLng(coords);
+	      }
+
+	      // 4) Compute bearing, set lastPos, and refresh Nav view
+	      if (lastPos) userBearing = getBearing(lastPos, coords);
+	      lastPos = coords;
+	      updateNavView();
+	    },
+	    err => console.warn(err),
+	    { enableHighAccuracy: false }
+	  );
+    
   }
   // ─── 9) BOTTOM‑TAB NAVIGATION ────────────────────────────────────────
 
