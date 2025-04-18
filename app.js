@@ -115,12 +115,12 @@ document.addEventListener('DOMContentLoaded', () => {
 
 	  // Pre‑snap your position once
 	  const userPt    = turf.point([ lastPos[1], lastPos[0] ]);
-	  const snappedUser = turf.nearestPointOnLine(routeLine, userPt, { units: 'kilometers' });
+	  const snappedUser = turf.nearestPointOnLine(routeLine, userPt, { units: 'miles' });
 
 	  poiData.forEach(dest => {
 	    // 1) Snap the POI to the trail
 	    const poiPt      = turf.point([ dest.coords[1], dest.coords[0] ]);
-	    const snappedPoi = turf.nearestPointOnLine(routeLine, poiPt, { units: 'kilometers' });
+	    const snappedPoi = turf.nearestPointOnLine(routeLine, poiPt, { units: 'miles' });
 	    const snappedLatLng = [
 	      snappedPoi.geometry.coordinates[1],
 	      snappedPoi.geometry.coordinates[0]
@@ -128,9 +128,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
 	    // 2) Compute both possible along‑trail segments
 	    const seg1 = turf.lineSlice(snappedUser, snappedPoi, routeLine);
-	    const d1   = turf.length(seg1, { units: 'kilometers' });
+	    const d1   = turf.length(seg1, { units: 'miles' });
 	    const seg2 = turf.lineSlice(snappedPoi, snappedUser, routeLine);
-	    const d2   = turf.length(seg2, { units: 'kilometers' });
+	    const d2   = turf.length(seg2, { units: 'miles' });
 
 	    // 3) Pick the shorter path
 	    const dist = Math.min(d1, d2);
