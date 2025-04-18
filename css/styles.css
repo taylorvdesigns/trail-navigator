@@ -178,3 +178,27 @@ html, body {
     font-size: 1rem;
   }
 
+  /* Nav overlay sits above the map and is hidden until you activate it */
+  #nav-overlay {
+    display: none;
+    z-index: 1000;
+    background: #fff;         /* ensure a solid backdrop over the map */
+  }
+  /* small button in Nav header */
+  #nav-trail-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+  #change-entry {
+    background: none;
+    border: none;
+    color: #0077CC;
+    font-size: 0.9rem;
+    cursor: pointer;
+    padding: 0.25rem 0.5rem;
+  }
+  #change-entry:hover {
+    text-decoration: underline;
+  }
+

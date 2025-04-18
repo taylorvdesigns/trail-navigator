@@ -1,9 +1,4 @@
-console.log('🟢 app.js loaded');
-
-document.addEventListener('DOMContentLoaded', () => {
-  console.log('🟢 DOMContentLoaded fired');
-
-  // ─── 1) DOM ELEMENTS & MAP SETUP ─────────────────────────────────────
+// ─── 1) DOM ELEMENTS & MAP SETUP ─────────────────────────────────────
   let userMarker     = null;
   let routeLatLngs   = [];
   let routeLine;
@@ -40,6 +35,8 @@ document.addEventListener('DOMContentLoaded', () => {
   // floating buttons
   const openNavBtn     = document.getElementById('open-nav');
   const closeDetailBtn = document.getElementById('close-detail');
+  const changeEntryBtn = document.getElementById('change-entry');
+  
 
   // detail‐view elements
   const detailTitle    = document.getElementById('detail-title');
@@ -97,17 +94,36 @@ document.addEventListener('DOMContentLoaded', () => {
 
 	  // 3) Pre‑render so buttons exist when needed
 	  renderEntryList();
+	  changeEntryBtn.addEventListener('click', () => {
+	    renderEntryList();
+	    entryOverlay.style.display = 'block';
+	  });
+	  
 
 	  // 4) Also update your visible trail name header
 	  const trailName = data.route.name || 'My Trail';
-	  document.getElementById('trail-header').textContent    = trailName;
-	  document.getElementById('nav-trail-header').textContent = trailName;
+
+	  // Update the always‑visible header (if it exists)
+	  const mainHeader = document.getElementById('trail-header');
+	  if (mainHeader) {
+	    mainHeader.textContent = trailName;
+	  }
+
+	  // Update the Nav overlay header (if it exists)
+	  const navNameSpan = document.getElementById('nav-trail-name');
+	  if (navNameSpan) {
+	    navNameSpan.textContent = trailName;
+	  }
+
+	  // Build entry‑points and render the list
+	  // const startPt = { name: "Trail Start", coords: routeLatLngs[0] };
+	  // const endPt   = { name: "Trail End",   coords: routeLatLngs[routeLatLngs.length - 1] };
+	  entryPoints = [ startPt, ...baseEntryPoints, endPt ];
+	  renderEntryList();
 	  
 
       // Build Turf lineString ([lng, lat])
       routeLine = turf.lineString(routeLatLngs.map(([lat, lng]) => [lng, lat]));
-	  
-
 	
     })
     .catch(err => console.error('Failed to load RWGPS route:', err));
@@ -334,6 +350,9 @@ document.addEventListener('DOMContentLoaded', () => {
   if (navigator.geolocation) {
 	  navigator.geolocation.watchPosition(
 	    pos => {
+			
+	  // ⚠️ Don’t proceed until routeLine exists
+	        if (!routeLine) return;
 	      const coords = [pos.coords.latitude, pos.coords.longitude];
 
 	      // 1) Snap & measure lateral offset from trail
@@ -380,30 +399,42 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   // 3) Map tab: show map, hide overlays
+  // ─── Bottom‑tab navigation ────────────────────────────────────────────
+  console.log({
+    navOverlay,
+    listOverlay,
+    entryOverlay,
+    openNavBtn
+  });
+  
   tabMap.addEventListener('click', () => {
+    // Hide all overlays
     navOverlay.style.display    = 'none';
+    entryOverlay.style.display  = 'none';
     listOverlay.style.display   = 'none';
-    openNavBtn.style.display    = 'block';
+    // Show only the map launcher
+    openNavBtn.style.display     = 'block';
     setActiveTab(tabMap);
   });
 
-  // 4) Nav tab: show nav overlay
   tabNav.addEventListener('click', () => {
-    navOverlay.style.display    = 'block';
-    listOverlay.style.display   = 'none';
-    openNavBtn.style.display    = 'none';
+    navOverlay.style.display   = 'block';
+    entryOverlay.style.display = 'none';
+    listOverlay.style.display  = 'none';
+    openNavBtn.style.display   = 'none';
     setActiveTab(tabNav);
+
+    // 🔄 Immediately rebuild the Ahead/Behind lists
+    updateNavView();
   });
 
-  // 5) List tab: show your grouped list view
   tabList.addEventListener('click', () => {
-	navOverlay.style.display    = 'none';
+    // Hide everything except the List overlay
+    navOverlay.style.display    = 'none';
+    entryOverlay.style.display  = 'none';
     listOverlay.style.display   = 'block';
-    openNavBtn.style.display    = 'none';
+    openNavBtn.style.display     = 'none';
     setActiveTab(tabList);
   });
   
-
-
-  
-}); // end DOMContentLoaded
+ // end DOMContentLoaded

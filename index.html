@@ -16,8 +16,12 @@
 
   <!-- Navigation Overlay (hidden by default) -->
   <div id="nav-overlay">
-    <header id="nav-trail-header">Loading…</header>
-
+	  
+  <header id="nav-trail-header">
+    <span id="nav-trail-name">My Trail</span>
+    <button id="change-entry" class="small-btn">Change Start</button>
+  </header>
+  
     <section id="ahead-section">
       <div class="section-label">Furthest ahead</div>
       <div id="ahead-list"></div>
@@ -43,7 +47,7 @@
     <p>Pick a point to start from:</p>
     <div id="entry-list"><!-- JS will inject buttons here --></div>
   </div>
-  
+ 
 
   <!-- Nav Mode launcher -->
   <button id="open-nav">Nav Mode</button>
