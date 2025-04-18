@@ -259,7 +259,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
 
   // ─── 5) LOAD YOUR WORDPRESS PLACES ───────────────────────────────────
-  fetch('http://srtmaps.elev8maps.com/wp-json/geodir/v2/places?per_page=100')
+  fetch('https://srtmaps.elev8maps.com/wp-json/geodir/v2/places?per_page=100')
     .then(r => {
       if (!r.ok) throw new Error(`GeoDir error: ${r.status}`);
       return r.json();
