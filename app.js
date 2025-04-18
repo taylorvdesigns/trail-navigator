@@ -96,7 +96,7 @@ document.addEventListener('DOMContentLoaded', () => {
     // ─── STRAIGHT‑LINE (Haversine) DISTANCE HELPER ────────────────────
     function haversineDistance([lat1, lon1], [lat2, lon2]) {
       const toRad = d => d * Math.PI/180;
-      const R     = 6371; // Earth radius in km
+      const R     = 6371; // Earth radius in mi
       const dLat  = toRad(lat2 - lat1);
       const dLon  = toRad(lon2 - lon1);
       const a = Math.sin(dLat/2)**2
@@ -147,7 +147,7 @@ document.addEventListener('DOMContentLoaded', () => {
 	      console.log('📍 Community Tap debug:');
 	      console.log('  Real coords:     ', dest.coords);
 	      console.log('  Snapped on trail:', snappedLatLng);
-	      console.log('  Chosen distance: ', dist.toFixed(2), 'km');
+	      console.log('  Chosen distance: ', dist.toFixed(2), 'mi');
 
 	      L.circleMarker(snappedLatLng, {
 	        radius:      6,
@@ -177,7 +177,7 @@ document.addEventListener('DOMContentLoaded', () => {
 	      aheadList.insertAdjacentHTML('beforeend', `
 	        <div class="poi-row">
 	          <span>${d.icon} ${d.name}</span>
-	          <span>${d._currentDistance.toFixed(1)} km</span>
+	          <span>${d._currentDistance.toFixed(1)} mi</span>
 	        </div>`);
 	    });
 
@@ -188,7 +188,7 @@ document.addEventListener('DOMContentLoaded', () => {
 	      behindList.insertAdjacentHTML('beforeend', `
 	        <div class="poi-row">
 	          <span>${d.icon} ${d.name}</span>
-	          <span>${d._currentDistance.toFixed(1)} km</span>
+	          <span>${d._currentDistance.toFixed(1)} mi</span>
 	        </div>`);
 	    });
 	}
@@ -203,7 +203,7 @@ document.addEventListener('DOMContentLoaded', () => {
     detailImg.src               = dest.image  || 'https://via.placeholder.com/400';
     detailImg.alt               = dest.name;
     detailDesc.textContent      = dest.description;
-    detailDistance.textContent  = dest._currentDistance?.toFixed(1) + ' km' || '';
+    detailDistance.textContent  = dest._currentDistance?.toFixed(1) + ' mi' || '';
     detailOverlay.style.display = 'block';
   }
 
