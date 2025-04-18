@@ -1,0 +1,38 @@
+[
+  {
+    "id": 1,
+    "name": "Central Park Entrance",
+    "type": "landmark",
+    "icon": "🌳",
+    "coords": [40.785091, -73.968285],
+    "distance": 0.0,
+    "description": "The start of the trail at Central Park, NYC."
+  },
+  {
+    "id": 2,
+    "name": "Coffee Stop",
+    "type": "business",
+    "icon": "☕",
+    "coords": [40.786500, -73.969000],
+    "distance": 0.5,
+    "description": "A great spot to grab a coffee and take a short break."
+  },
+  {
+    "id": 3,
+    "name": "City Viewpoint",
+    "type": "viewpoint",
+    "icon": "🏙️",
+    "coords": [40.787800, -73.970500],
+    "distance": 1.2,
+    "description": "Offers a fantastic view of the city skyline."
+  },
+  {
+    "id": 4,
+    "name": "Rest Stop",
+    "type": "rest_stop",
+    "icon": "🛋️",
+    "coords": [40.788900, -73.971200],
+    "distance": 2.0,
+    "description": "A bench and small shelter for rest."
+  }
+]
