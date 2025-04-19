@@ -194,6 +194,12 @@ html, body {
   text-overflow: ellipsis;
 }
 
+.poi-name i {
+  margin-right: 0.5rem;
+  color: #0077CC;   /* or whatever accent color you like */
+}
+
+
 /* ─── Responsive Tweaks ──────────────────────────────────────────── */
 @media (max-width: 600px) {
   #bottom-tabs button {

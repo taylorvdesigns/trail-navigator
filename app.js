@@ -57,6 +57,14 @@
     { slug: 'ice-cream', iconClass: 'fa-solid fa-ice-cream',   title: 'Ice Cream'},
     { slug: 'landmark',  iconClass: 'fa-solid fa-map-pin',    title: 'Landmark' }
   ];
+  // From an array of tag objects, return one <i> per matching slug
+  function getCategoryIcons(tags = []) {
+    return tags
+      .map(tag => categoryIcons[tag.slug])  // look up each slug
+      .filter(Boolean)                      // drop any missing ones
+      .map(cls => `<i class="${cls}" aria-hidden="true"></i>`)
+      .join('');                            // glue into one HTML string
+  }
   
   const activeFilters = new Set();
   const filterContainer = document.querySelector('.filter-buttons');
@@ -79,15 +87,37 @@
       updateNavView();
     });
   });
+  
+   // ─── Destination category iconsC ────────────────────────────────────
+  // slug → Font Awesome class
+  const categoryIcons = {
+    'food':      'fas fa-utensils',
+    'drink':     'fas fa-beer',
+    'ice-cream': 'fas fa-ice-cream',
+    'landmark':  'fas fa-map-pin'
+  };
+  poiData.slice(0,1).forEach(d => {
+    console.log('POI tags for', d.name, d.tags.map(t=>t.slug));
+  });
 
-  // ─── 3) NAV & DETAIL TOGGLE LOGIC ────────────────────────────────────
+  // From an array of tag objects, return one <i> per matching slug
+  function getCategoryIcons(tags = []) {
+    return tags
+      .map(tag => categoryIcons[tag.slug])  // look up each slug
+      .filter(Boolean)                      // drop any missing ones
+      .map(cls => `<i class="${cls}" aria-hidden="true"></i>`)
+      .join('');                            // glue into one HTML string
+  }
+ 
+
+  // ─── NAV & DETAIL TOGGLE LOGIC ────────────────────────────────────
   openNavBtn.addEventListener('click', () => {
     navOverlay.style.display = 'block';
     openNavBtn.style.display = 'none';
   });
   
 
-  // ─── 3) RwGPS ROUTE FETCH & Turf setup ────────────────────────────────
+  // ─── RwGPS ROUTE FETCH & Turf setup ────────────────────────────────
   const ROUTE_ID   = 50357921;
   const API_KEY    = '81c8a1eb';
   const AUTH_TOKEN = '5cc5e4b222670322422e8a3fb7324379';
@@ -236,28 +266,34 @@
 	  aheadList.innerHTML  = '';
 	  behindList.innerHTML = '';
 
-	  // Ahead: pick five nearest, then display farthest→nearest
-	  ahead
-	    .slice(0, 5)
-	    .sort((a, b) => b._currentDistance - a._currentDistance)
-	    .forEach(d => {
-	      aheadList.insertAdjacentHTML('beforeend', `
-	        <div class="poi-row">
-	          <span>${d.icon} ${d.name}</span>
-	          <span>${d._currentDistance.toFixed(1)} mi</span>
-	        </div>`);
-	    });
+	// 1) Sort all ahead POIs by distance (nearest → farthest)
+	const nearestAhead = ahead
+	  .sort((a, b) => a._currentDistance - b._currentDistance)
+	  .slice(0, 5);            // 2) keep only the five closest
+
+	// 3) Reverse so the farthest of those five is first
+	nearestAhead.reverse().forEach(d => {
+	  aheadList.insertAdjacentHTML('beforeend', `
+	    <div class="poi-row">
+	      <span class="poi-name">
+	        ${d.name}
+	        ${getCategoryIcons(d.categories)}
+	      </span>
+	      <span>${d._currentDistance.toFixed(1)} mi</span>
+	    </div>`);
+	});
 
 	  // Behind: three nearest → display nearest→farthest
-	  behind
-	    .slice(0, 3)
-	    .forEach(d => {
-	      behindList.insertAdjacentHTML('beforeend', `
-	        <div class="poi-row">
-	          <span>${d.icon} ${d.name}</span>
-	          <span>${d._currentDistance.toFixed(1)} mi</span>
-	        </div>`);
-	    });
+	  behind.slice(0,5).forEach(d => {
+	    behindList.insertAdjacentHTML('beforeend', `
+	      <div class="poi-row">
+	        <span class="poi-name">
+	          ${d.name}
+	          ${getCategoryIcons(d.categories)}
+	        </span>
+	        <span>${d._currentDistance.toFixed(1)} mi</span>
+	      </div>`);
+	  });
 	}
 
 
