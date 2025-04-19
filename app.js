@@ -50,8 +50,37 @@
   L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
     attribution: '&copy; OpenStreetMap contributors'
   }).addTo(map);
+  // ─── 2) FILTER DEFS & BUTTON RENDERING ───────────────────────────────
+  const filterDefs = [
+    { slug: 'food',      iconClass: 'fa-solid fa-utensils',   title: 'Food'     },
+    { slug: 'drink',     iconClass: 'fa-solid fa-beer-mug-empty',    title: 'Drink'    },
+    { slug: 'ice-cream', iconClass: 'fa-solid fa-ice-cream',   title: 'Ice Cream'},
+    { slug: 'landmark',  iconClass: 'fa-solid fa-map-pin',    title: 'Landmark' }
+  ];
+  
+  const activeFilters = new Set();
+  const filterContainer = document.querySelector('.filter-buttons');
 
-  // ─── 2) NAV & DETAIL TOGGLE LOGIC ────────────────────────────────────
+  filterDefs.forEach(f => {
+    const btn = document.createElement('button');
+    btn.innerHTML    = `<i class="${f.iconClass}"></i>`;
+    btn.title        = f.title;
+    btn.dataset.slug = f.slug;
+    filterContainer.appendChild(btn);
+
+    btn.addEventListener('click', () => {
+      if (activeFilters.has(f.slug)) {
+        activeFilters.delete(f.slug);
+        btn.classList.remove('active');
+      } else {
+        activeFilters.add(f.slug);
+        btn.classList.add('active');
+      }
+      updateNavView();
+    });
+  });
+
+  // ─── 3) NAV & DETAIL TOGGLE LOGIC ────────────────────────────────────
   openNavBtn.addEventListener('click', () => {
     navOverlay.style.display = 'block';
     openNavBtn.style.display = 'none';
@@ -116,8 +145,6 @@
 	  }
 
 	  // Build entry‑points and render the list
-	  // const startPt = { name: "Trail Start", coords: routeLatLngs[0] };
-	  // const endPt   = { name: "Trail End",   coords: routeLatLngs[routeLatLngs.length - 1] };
 	  entryPoints = [ startPt, ...baseEntryPoints, endPt ];
 	  renderEntryList();
 	  
@@ -154,57 +181,62 @@
       return 2 * R * Math.asin(Math.sqrt(a));
     }
 
-    // ─── NAV VIEW BUILDER WITH PURELY ALONG‑TRAIL DISTANCES ───────────
+	// ─── NAV VIEW BUILDER WITH PURELY ALONG‑TRAIL DISTANCES ───────────
 	function updateNavView() {
+	  // 0) Early bail if we don’t have everything we need
 	  if (!lastPos || !poiData.length || !routeLine) return;
 
-	  const bearing   = userBearing != null ? userBearing : 0;
-	  const ahead     = [];
-	  const behind    = [];
+	  // 1) Category‑filtering: narrow poiData to only those matching activeFilters
+	  let data = poiData;
+	  if (activeFilters.size > 0) {
+	    data = poiData.filter(dest =>
+	      dest.categories?.some(c => activeFilters.has(c.slug))
+	    );
+	  }
+
+	  // 2) Now do the usual bearing/distance buckets on filtered `data`
+	  const bearing    = userBearing != null ? userBearing : 0;
+	  const ahead      = [];
+	  const behind     = [];
 
 	  // Pre‑snap your position once
-	  const userPt    = turf.point([ lastPos[1], lastPos[0] ]);
+	  const userPt      = turf.point([ lastPos[1], lastPos[0] ]);
 	  const snappedUser = turf.nearestPointOnLine(routeLine, userPt, { units: 'miles' });
 
-	  poiData.forEach(dest => {
-	    // 1) Snap the POI to the trail
+	  // 3) Loop over the filtered array
+	  data.forEach(dest => {
+	    // Snap POI to the trail
 	    const poiPt      = turf.point([ dest.coords[1], dest.coords[0] ]);
 	    const snappedPoi = turf.nearestPointOnLine(routeLine, poiPt, { units: 'miles' });
-	    const snappedLatLng = [
-	      snappedPoi.geometry.coordinates[1],
-	      snappedPoi.geometry.coordinates[0]
-	    ];
 
-	    // 2) Compute both possible along‑trail segments
+	    // Compute along‑trail segments
 	    const seg1 = turf.lineSlice(snappedUser, snappedPoi, routeLine);
 	    const d1   = turf.length(seg1, { units: 'miles' });
 	    const seg2 = turf.lineSlice(snappedPoi, snappedUser, routeLine);
 	    const d2   = turf.length(seg2, { units: 'miles' });
 
-	    // 3) Pick the shorter path
+	    // Pick the shorter path
 	    const dist = Math.min(d1, d2);
 	    dest._currentDistance = dist;
 
-	    // 4) Bucket by raw bearing
+	    // Bucket by raw bearing
 	    const b    = getBearing(lastPos, dest.coords);
 	    const diff = Math.min(Math.abs(b - bearing), 360 - Math.abs(b - bearing));
 	    if (diff <= 90) ahead.push(dest);
 	    else            behind.push(dest);
-
-
 	  });
 
-	  // 6) Sort ascending
+	  // 4) Sort ascending for nearest-first
 	  ahead.sort((a, b) => a._currentDistance - b._currentDistance);
 	  behind.sort((a, b) => a._currentDistance - b._currentDistance);
 
-	  // 7) Render lists
+	  // 5) Render the lists
 	  const aheadList  = document.getElementById('ahead-list');
 	  const behindList = document.getElementById('behind-list');
 	  aheadList.innerHTML  = '';
 	  behindList.innerHTML = '';
 
-	  // Ahead: five nearest → display farthest→nearest
+	  // Ahead: pick five nearest, then display farthest→nearest
 	  ahead
 	    .slice(0, 5)
 	    .sort((a, b) => b._currentDistance - a._currentDistance)
@@ -227,6 +259,7 @@
 	        </div>`);
 	    });
 	}
+
 
 
 	function renderEntryList() {
@@ -319,14 +352,21 @@
     })
     .then(places => {
       // 1) Map into poiData, including the tags array
-      poiData = places.map(p => ({
-        name:        p.title.rendered,
-        coords:      [ parseFloat(p.latitude), parseFloat(p.longitude) ],
-        icon:        '📍',
-        description: p.content.raw,
-        image:       p.featured_image?.[0]?.source_url || '',
-        tags:        p.post_tags    // capture the tags for grouping
-      }));
+		poiData = places.map(p => ({
+		  name:        p.title.rendered,
+		  coords:      [ parseFloat(p.latitude), parseFloat(p.longitude) ],
+		  icon:        '📍',
+		  description: p.content.raw,
+		  image:       p.featured_image?.[0]?.source_url || '',
+		  tags:        p.post_tags,
+		  categories:  (p.post_category || []).map(c => ({
+		                  id:   c.id,
+		                  name: c.name,
+		                  slug: c.slug.replace(/^\d+-/, '')
+		                }))
+		}));
+
+     
 
       // 2) Draw markers as before
       places.forEach(p => {

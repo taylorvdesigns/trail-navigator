@@ -23,8 +23,8 @@ html, body {
 /* Map and overlays geometry */
 #map,
 #nav-overlay,
-#detail-overlay,
-#list-overlay {
+#list-overlay,
+#entry-overlay {
   position: absolute;
   top: 3.5rem;   /* below header */
   bottom: 3rem;  /* above bottom tabs */
@@ -33,24 +33,53 @@ html, body {
   background: #fff;
 }
 
+/* Nav overlay layout: column flex to position sections */
+#nav-overlay {
+  display: flex;
+  flex-direction: column;
+  /* removed justify-content to allow margin-top:auto on behind-section */
+  z-index: 1000;
+}
+
 /* Navigation overlay header */
 #nav-trail-header {
   padding: 1rem;
   font-size: 1.25rem;
   font-weight: bold;
   border-bottom: 1px solid #ddd;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
 }
 
 /* Section styling */
-#ahead-section,
-#behind-section {
-  padding: 0.5rem 1rem;
-}
 #ahead-section {
+  padding: 0.5rem 1rem;
   border-bottom: 1px solid #eee;
 }
+
+/* Center arrow section takes available space */
+.nav-center {
+  text-align: center;
+  padding: 1.5rem;
+  flex: 1;
+}
+.nav-center .arrow {
+  font-size: 2.5rem;
+  line-height: 1;
+  color: #0077CC;
+}
+
+
+/* Behind section pushed to bottom via margin-top:auto */
 #behind-section {
+  position: absolute;
+  bottom: 0;         /* flush to bottom of the nav-overlay container */
+  left: 0;
+  right: 0;
+  padding: 0.5rem 1rem;
   border-top: 1px solid #eee;
+  background: #fff;
 }
 
 /* Section labels */
@@ -64,28 +93,27 @@ html, body {
   margin-bottom: 0;
 }
 
-/* Center arrow + grade section */
-.nav-center {
-  text-align: center;
-  padding: 1.5rem;
-}
-.nav-center .arrow {
-  font-size: 2.5rem;
-  line-height: 1;
-  color: #0077CC;
-}
-.nav-center .grade {
-  margin-top: 0.5rem;
-  font-size: 0.9rem;
-  color: #666;
-}
-
 /* List overlay */
 #list-overlay {
   overflow-y: auto;
   padding: 1rem;
   z-index: 1100;
   font-family: sans-serif;
+}
+
+/* Entry overlay styling */
+#entry-overlay {
+  overflow-y: auto;
+  padding: 1.5rem;
+  z-index: 1200;
+  font-family: sans-serif;
+}
+#entry-list button {
+  display: block;
+  width: 80%;
+  margin: 0.5rem auto;
+  padding: 0.75rem;
+  font-size: 1rem;
 }
 
 /* Open Nav button */
@@ -149,46 +177,14 @@ html, body {
   }
   #map,
   #nav-overlay,
-  #detail-overlay,
-  #list-overlay {
+  #list-overlay,
+  #entry-overlay {
     top: 3rem;
     bottom: 4rem;
   }
   #nav-trail-header {
     font-size: 1rem;
     padding: 0.75rem 1rem;
-  }
-  #entry-overlay {
-    display: none;
-    position: absolute;
-    top: 3.5rem;
-    bottom: 3rem;
-    left: 0; right: 0;
-    background: rgba(255,255,255,0.95);
-    z-index: 1200;
-    padding: 1.5rem;
-    text-align: center;
-    font-family: sans-serif;
-  }
-  #entry-list button {
-    display: block;
-    width: 80%;
-    margin: 0.5rem auto;
-    padding: 0.75rem;
-    font-size: 1rem;
-  }
-
-  /* Nav overlay sits above the map and is hidden until you activate it */
-  #nav-overlay {
-    display: none;
-    z-index: 1000;
-    background: #fff;         /* ensure a solid backdrop over the map */
-  }
-  /* small button in Nav header */
-  #nav-trail-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
   }
   #change-entry {
     background: none;
@@ -201,4 +197,50 @@ html, body {
   #change-entry:hover {
     text-decoration: underline;
   }
+}
+
+/* ─── Nav‑center flex container ───────────────────────────────────── */
+.nav-center {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  padding: 1rem 2rem;
+  box-sizing: border-box;
+}
+
+/* ─── Filter panel, stacked vertically, absolutely positioned ───── */
+.nav-center .filter-buttons {
+  position: absolute;
+  top: 50%;
+  right: 1rem;
+  transform: translateY(-50%);
+  display: flex;
+  flex-direction: column;  /* stack them */
+  gap: 1rem;               /* space between icons */
+}
+
+/* ─── Individual filter buttons ─────────────────────────────────── */
+.nav-center .filter-buttons button {
+  background: transparent;
+  border: none;
+  font-size: 2rem;         /* bigger icons */
+  width: 2.5rem;           /* tappable area */
+  height: 2.5rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  opacity: 0.5;
+  color: #333;
+  transition: opacity 0.15s;
+}
+
+/* ─── Active state ───────────────────────────────────────────────── */
+.nav-center .filter-buttons button.active {
+  opacity: 1;
+  color: #0077CC;
+}
+
 
