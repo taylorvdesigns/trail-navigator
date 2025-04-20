@@ -133,20 +133,76 @@ html, body {
   font-family: sans-serif;
 }
 
-/* ─── Entry Overlay ──────────────────────────────────────────────── */
+/* dim the map behind the modal */
 #entry-overlay {
-  overflow-y: auto;
-  padding: 1.5rem;
-  z-index: 1200;
-  font-family: sans-serif;
+  display: none;                /* shown via JS */
+  position: absolute;
+  top: 0; left: 0; right: 0; bottom: 0;
+  background: rgba(0,0,0,0.4);
+  z-index: 2000;
 }
+
+/* center our “dialog” */
+.entry-modal {
+  position: absolute;
+  top: 50%; left: 50%;
+  transform: translate(-50%, -50%);
+  background: #fff;
+  padding: 1.5rem;
+  width: 90%;
+  max-width: 360px;
+  border-radius: 0.5rem;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.2);
+  font-family: sans-serif;
+  text-align: center;
+}
+
+/* close button at top‑right */
+.modal-close {
+  position: absolute;
+  top: 0.5rem; right: 0.5rem;
+  border: none;
+  background: none;
+  font-size: 1.5rem;
+  line-height: 1;
+  cursor: pointer;
+  color: #666;
+}
+.modal-close:hover {
+  color: #333;
+}
+
+/* The heading */
+.entry-modal h2 {
+  margin-top: 0;
+  margin-bottom: 0.5rem;
+  font-size: 1.25rem;
+}
+
+/* The instruction text */
+.entry-modal p {
+  margin: 0 0 1rem;
+  color: #555;
+}
+
+/* List of entry‑buttons */
 #entry-list button {
   display: block;
-  width: 80%;
-  margin: 0.5rem auto;
+  width: 100%;
+  margin: 0.5rem 0;
   padding: 0.75rem;
   font-size: 1rem;
+  border: 1px solid #ddd;
+  background: #f9f9f9;
+  border-radius: 0.25rem;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s;
 }
+#entry-list button:hover {
+  background: #fff;
+  border-color: #ccc;
+}
+
 
 /* ─── Open‑Nav Button ─────────────────────────────────────────────── */
 #open-nav {
@@ -198,6 +254,70 @@ html, body {
   margin-right: 0.5rem;
   color: #0077CC;   /* or whatever accent color you like */
 }
+
+/* Detail Overlay (always on top) */
+#detail-overlay {
+  position: absolute;  /* make sure it covers the whole viewport */
+  top: 3.5rem;         /* match your header offset */
+  bottom: 3rem;        /* match your bottom tabs */
+  left: 0;
+  right: 0;
+  background: rgba(255,255,255,0.95);
+  overflow-y: auto;
+  font-family: sans-serif;
+  padding: 1rem;
+  z-index: 3000;       /* <<<<<< bump this above everything else */
+}
+
+/* ─── Lightbox Modal Styles ───────────────────────────────────────── */
+
+/* Full‑screen transparent backdrop */
+.modal-overlay {
+  display: none;               /* hidden by default */
+  position: fixed;
+  top: 0; left: 0; right: 0; bottom: 0;
+  background: rgba(0,0,0,0.5); /* dim underlying content */
+  z-index: 9999;               /* on top of everything */
+  overflow: auto;              /* scroll if content is tall */
+}
+
+/* Centered white box */
+.modal-content {
+  position: relative;
+  background: #fff;
+  max-width: 90%;
+  width: 400px;
+  margin: 5% auto;            /* push it down a bit and center horizontally */
+  padding: 1.5rem;
+  border-radius: 8px;
+  box-shadow: 0 2px 12px rgba(0,0,0,0.3);
+}
+
+/* “×” close button in top‑right */
+.modal-close {
+  position: absolute;
+  top: 0.5rem;
+  right: 0.75rem;
+  background: none;
+  border: none;
+  font-size: 1.5rem;
+  line-height: 1;
+  cursor: pointer;
+}
+
+/* Hide the distance paragraph if empty */
+#detail-distance-container[style*="display: none"] {
+  display: none;
+}
+
+/* Ensure image fits inside the box */
+.modal-content img {
+  width: 100%;
+  height: auto;
+  margin: 0.75rem 0;
+  border-radius: 4px;
+}
+
 
 
 /* ─── Responsive Tweaks ──────────────────────────────────────────── */

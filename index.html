@@ -45,20 +45,33 @@
     </section>
 </div>
 
+<!-- 3) Detail Overlay (hidden by default) -->
+<div id="detail-overlay" class="modal-overlay">
+  <div class="modal-content">
+    <button id="close-detail" class="modal-close" aria-label="Close">×</button>
+    <h2 id="detail-title"></h2>
+    <img id="detail-img" src="" alt="" />
+    <p id="detail-desc"></p>
+    <p id="detail-distance-container">
+      <strong>Distance:</strong> <span id="detail-distance"></span>
+    </p>
+  </div>
+</div>
 
   <!-- List Overlay (hidden by default) -->
   <div id="list-overlay"></div>
   
-  <!-- Entry‑Point Override Overlay (hidden by default) -->
-  <div id="entry-overlay">
+<!-- Entry Overlay -->
+<div id="entry-overlay">
+  <div class="entry-modal">
+    <button id="entry-close" class="modal-close" aria-label="Close">×</button>
     <h2>You’re off the trail!</h2>
     <p>Pick a point to start from:</p>
-    <div id="entry-list"><!-- JS will inject buttons here --></div>
+    <div id="entry-list"></div>
   </div>
- 
+</div>
 
-  <!-- Nav Mode launcher -->
-  <button id="open-nav">Nav Mode</button>
+ 
 
   <!-- Bottom Tab Bar -->
   <nav id="bottom-tabs">
