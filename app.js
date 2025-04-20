@@ -413,15 +413,25 @@ fetch('https://srtmaps.elev8maps.com/wp-json/geodir/v2/places?per_page=100')
       const [ lng, lat ] = snapped.geometry.coordinates;
       const lateralKm = haversineDistance(coords, [lat, lng]);
 
-      if (lateralKm > 0.152) {  
-        // hide any other overlays
-        navOverlay.style.display    = 'none';
-        listOverlay.style.display   = 'none';
-        detailOverlay.style.display = 'none';
+	  let hasChosenEntry = false;
 
-        entryOverlay.style.display = 'block';
-        return;  // bail out before updateNavView
-      }
+	  navigator.geolocation.watchPosition(pos => {
+	    if (!routeLine || hasChosenEntry) return;
+
+	    /* … compute lateralKm … */
+
+	    if (lateralKm > 0.152) {
+	      entryOverlay.style.display = 'block';
+	      return;
+	    }
+
+	    // once we use real position, we can stop showing entry modal
+	    hasChosenEntry = true;
+	    entryOverlay.style.display = 'none';
+	    /* … update map & nav … */
+	  },
+	  err => console.warn(err),
+	  { enableHighAccuracy: false });
     }
 
     // if we reach here, either it’s our very first fix, or we’re on‑trail:
@@ -454,14 +464,15 @@ function renderEntryList() {
     btn.textContent    = pt.name;
     btn.dataset.index  = i;
     entryList.appendChild(btn);
-    btn.addEventListener('click', () => {
-      lastPos      = [...pt.coords];
-      userBearing  = null;
-      entryOverlay.style.display = 'none';
-      navOverlay.style.display   = 'block';
-      setActiveTab(tabNav);
-      updateNavView();
-    });
+	btn.addEventListener('click', () => {
+	  lastPos = [...pt.coords];
+	  userBearing = null;
+	  hasChosenEntry = true;       // ← prevent future pop‑ups
+	  entryOverlay.style.display = 'none';
+	  navOverlay.style.display   = 'block';
+	  setActiveTab(tabNav);
+	  updateNavView();
+	});
   });
 }
 
