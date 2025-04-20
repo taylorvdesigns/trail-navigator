@@ -49,16 +49,20 @@ html, body {
 /* ── Base geometry for the overlay ───────────────────────────── */
 #nav-overlay {
   position: absolute;
-  top:    3.5rem;   /* under header */
+  top:    3.5rem;   /* below header */
   bottom: 3rem;     /* above tabs */
-  left:   0; right: 0;
+  left:   0;
+  right:  0;
   background: #fff;
-  z-index: 1000;    /* above the map */
-  overflow: hidden; /* just in case */
+
+  display: flex;       /* <-- ensure it’s flex */
+  flex-direction: column;
+  z-index: 1000;       /* <-- sit above the map */
 }
 
 /* ─── Nav Header ──────────────────────────────────────────────────── */
 #nav-trail-header {
+  flex: 0 0 auto;
   padding: 1rem;
   font-size: 1.25rem;
   font-weight: bold;
@@ -70,19 +74,18 @@ html, body {
 
 /* wrap the three sections beneath the header */
 .nav-body {
-  position: relative;
   flex: 1;
   display: flex;
   flex-direction: column;
+  justify-content: space-between;
+  overflow: hidden;  /* prevent unwanted scrollbars */
 }
 /* ── Ahead pinned to the top ──────────────────────────────────── */
 #ahead-section {
-  position: absolute;
-  top: 0;
-  left: 0; right: 0;
+  flex: 0 0 auto;
   padding: 0.5rem 1rem;
   border-bottom: 1px solid #eee;
-  overflow-y: auto; /* scroll if too tall */
+  overflow-y: auto;  /* if list gets long, only this scrolls */
 }
 .section-label {
   font-size: 0.9rem;
@@ -92,37 +95,29 @@ html, body {
 
 /* ── Center arrow & filters ──────────────────────────────────── */
 .nav-center {
-  position: absolute;
-  top: 50%;
-  left: 0; right: 0;
-  transform: translateY(-50%);
+  flex: 1 0 auto;            /* grow to fill leftover space */
   display: flex;
-  flex-direction: column;
-  align-items: center;
-  pointer-events: none; /* so clicks pass through to lists if needed */
+  flex-direction: column;    
+  justify-content: center;   /* vertically center arrow+filters */
+  align-items: center;       /* horizontally center them */
+  padding: 1.5rem 0;
 }
 .nav-center .arrow {
   font-size: 2.5rem;
   color: #0077CC;
-  pointer-events: auto;
+  margin-bottom: 1rem;
 }
 .nav-center .filter-buttons {
-  pointer-events: auto;
-  margin-top: 1rem;
-  display: flex;
+  display: flex;       /* horizontal row */
   gap: 1rem;
 }
 
 
 /* ── Behind pinned to the bottom ─────────────────────────────── */
 #behind-section {
-  position: absolute;
-  bottom: 0;
-  left: 0; right: 0;
+  flex: 0 0 auto;
   padding: 0.5rem 1rem;
   border-top: 1px solid #eee;
-  background: #fff;
-  overflow-y: auto; /* scroll if too tall */
 }
 
 /* ─── List Overlay ───────────────────────────────────────────────── */

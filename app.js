@@ -472,7 +472,7 @@ function renderEntryList() {
 	  navOverlay.style.display   = 'block';
 	  setActiveTab(tabNav);
 	  updateNavView();
-	});
+	});navOverlay.style.display = 'flex';
   });
 }
 
@@ -502,7 +502,7 @@ tabMap.addEventListener('click', () => {
 });
 
 tabNav.addEventListener('click', () => {
-  navOverlay.style.display = 'block';
+  navOverlay.style.display = 'flex';
   listOverlay.style.display = 'none';
   entryOverlay.style.display= 'none';
   setActiveTab(tabNav);
