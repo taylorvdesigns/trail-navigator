@@ -107,10 +107,51 @@ html, body {
   color: #0077CC;
   margin-bottom: 1rem;
 }
+
 .nav-center .filter-buttons {
-  display: flex;       /* horizontal row */
-  gap: 1rem;
+  display: flex;        /* horizontal row */
+  gap: 1rem;            /* space between icons */
+  margin-top: 0.5rem;   /* some breathing room under the arrow */
 }
+
+
+/* ─── Filter Button Base Styles ──────────────────────────────────── */
+.nav-center .filter-buttons button {
+  background: transparent;
+  border: 2px solid transparent;   /* invisible border by default */
+  border-radius: 4px;
+  font-size: 1.75rem;
+  width: 2.75rem;
+  height: 2.75rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: 
+    background 0.15s ease,
+    border-color 0.15s ease,
+    transform 0.1s ease;
+}
+
+/* hover state for all buttons */
+.nav-center .filter-buttons button:hover {
+  background: rgba(0, 120, 200, 0.05);
+}
+
+/* ─── Active (“On”) State ───────────────────────────────────────── */
+.nav-center .filter-buttons button.active {
+  background: rgba(0, 120, 200, 0.15);
+  border-color: #0077CC;
+  color: #0077CC;
+  transform: scale(1.1);
+}
+
+/* optional: focus outline for accessibility */
+.nav-center .filter-buttons button:focus {
+  outline: 2px solid #0077CC;
+  outline-offset: 2px;
+}
+
 
 
 /* ── Behind pinned to the bottom ─────────────────────────────── */
@@ -233,22 +274,33 @@ html, body {
 }
 
 /* ─── POI Rows ───────────────────────────────────────────────────── */
+/* Make each POI row look & feel like a button/link */
 .poi-row {
-  display: grid;
-  grid-template-columns: 1fr auto;
-  align-items: center;
-  margin-bottom: 0.5rem;
-}
-.poi-row span:first-child {
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  cursor: pointer;               /* show it’s clickable */
+  padding: 0.5rem 1rem;          /* give it some breathing room */
+  border-radius: 4px;            /* soften the corners */
+  transition: background 0.2s;   /* smooth hover effect */
 }
 
-.poi-name i {
-  margin-right: 0.5rem;
-  color: #0077CC;   /* or whatever accent color you like */
+/* Hover/focus state */
+.poi-row:hover,
+.poi-row:focus {
+  background: rgba(0, 120, 200, 0.1);
 }
+
+/* Style the name itself as a link */
+.poi-row .poi-name {
+  color: #0077CC;                /* link‑blue text */
+  text-decoration: none;         /* remove any default underline */
+  font-weight: 500;
+}
+
+/* Underline on hover/focus just the name */
+.poi-row:hover .poi-name,
+.poi-row:focus .poi-name {
+  text-decoration: underline;
+}
+
 
 /* Detail Overlay (always on top) */
 #detail-overlay {

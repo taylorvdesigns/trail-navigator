@@ -283,7 +283,7 @@ closeDetailBtn.addEventListener('click', () => {
     listOverlay.style.display = 'none';
 
   } else if (lastActiveTab === tabNav) {
-    navOverlay.style.display  = 'block';
+    navOverlay.style.display  = 'flex';
     listOverlay.style.display = 'none';
     updateNavView();  // rebuild ahead/behind lists
 
@@ -469,7 +469,7 @@ function renderEntryList() {
 	  userBearing = null;
 	  hasChosenEntry = true;       // ← prevent future pop‑ups
 	  entryOverlay.style.display = 'none';
-	  navOverlay.style.display   = 'block';
+	  navOverlay.style.display   = 'flex';
 	  setActiveTab(tabNav);
 	  updateNavView();
 	});navOverlay.style.display = 'flex';
