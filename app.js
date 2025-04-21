@@ -1,3 +1,6 @@
+let hasManualEntry = false;
+
+
 // ─── 0) GLOBAL STATE & MAP SETUP ─────────────────────────────────────
 let userMarker     = null;
 let routeLatLngs   = [];
@@ -472,10 +475,10 @@ fetch('https://srtmaps.elev8maps.com/wp-json/geodir/v2/places?per_page=100')
 
 	    /* … compute lateralKm … */
 
-	    if (lateralKm > 0.152) {
-	      entryOverlay.style.display = 'block';
-	      return;
-	    }
+		if (!hasManualEntry && lateralKm > 0.152) {
+		  entryOverlay.style.display = 'block';
+		  return;
+		}
 
 	    // once we use real position, we can stop showing entry modal
 	    hasChosenEntry = true;
@@ -519,7 +522,7 @@ function renderEntryList() {
 	btn.addEventListener('click', () => {
 	  lastPos = [...pt.coords];
 	  userBearing = null;
-	  hasChosenEntry = true;       // ← prevent future pop‑ups
+	  hasManualEntry = true;// ← prevent future pop‑ups
 	  entryOverlay.style.display = 'none';
 	  navOverlay.style.display   = 'flex';
 	  setActiveTab(tabNav);
