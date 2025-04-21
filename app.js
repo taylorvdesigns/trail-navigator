@@ -1,6 +1,8 @@
 let hasManualEntry = false;
 
 
+
+
 // ─── 0) GLOBAL STATE & MAP SETUP ─────────────────────────────────────
 let userMarker     = null;
 let routeLatLngs   = [];
@@ -187,6 +189,40 @@ function haversineDistance([lat1, lon1], [lat2, lon2]) {
   return 2 * R * Math.asin(Math.sqrt(a));
 }
 
+// default mode
+let currentMode = 'walk';
+
+// speeds (mph)
+const modeSpeeds = { walk: 3.1, run: 5.0, bike: 12.0 };
+
+// helper
+function toMinutesStr(hours) {
+  return Math.round(hours * 60) + ' min';
+}
+
+// after document.querySelectorAll / getElementById...
+const modeButtons = document.querySelectorAll('.mode-btn');
+modeButtons.forEach(btn => {
+  btn.addEventListener('click', () => {
+    // toggle single mode
+    const m = btn.dataset.mode;
+    if (currentMode === m) {
+      // optional: allow “no mode” → hide times?
+      return;
+    }
+    currentMode = m;
+    // update UI
+    modeButtons.forEach(b => b.classList.toggle('active', b.dataset.mode === currentMode));
+    // re‑draw the lists
+    updateNavView();
+  });
+});
+
+// set initial active state
+modeButtons.forEach(b => b.classList.toggle('active', b.dataset.mode === currentMode));
+
+
+
 // ─── 3) Build the Nav view (ahead/behind lists) ──────────────────────
 function updateNavView() {
   if (!lastPos || !poiData.length || !routeLine) return;
@@ -236,32 +272,85 @@ function updateNavView() {
   const behindList = document.getElementById('behind-list');
   aheadList.innerHTML = '';
   behindList.innerHTML = '';
+  aheadList.insertAdjacentHTML('beforeend', `
+    <div class="mode-toggle">
+      <button data-mode="walk" class="${currentMode==='walk'?'active':''}"><i class="fa-solid fa-person-walking"></i></button>
+      <button data-mode="run"  class="${currentMode==='run' ?'active':''}"><i class="fa-solid fa-person-running"></i></button>
+      <button data-mode="bike" class="${currentMode==='bike'?'active':''}"><i class="fa-solid fa-person-biking"></i></button>
+    </div>
+  `);
+aheadList
+    .querySelectorAll('.mode-toggle button')
+    .forEach(btn => btn.addEventListener('click', () => {
+      currentMode = btn.dataset.mode;
+      updateNavView();   // re‑draw everything in the newly selected mode
+    }));
+  
+  // ─── Ahead header icons ─────────────────────────────────────────────
+  aheadList.insertAdjacentHTML('beforeend', `
+<div class="poi-row header-row">
+    <div class="poi-name header-label">Destinations Ahead</div>
+    <div class="poi-times">
+      <span class="poi-distance">Distance</span>
+      <span class="poi-time">Time</span>
+    </div>
+  </div>
+  `);
+  
+  behindList.insertAdjacentHTML('beforeend', `
+<div class="poi-row header-row">
+    <div class="poi-name header-label">Destinations Behind</div>
+    <div class="poi-times">
+      <span class="poi-distance">Distance</span>
+      <span class="poi-time">Time</span>
+    </div>
+  </div>
+  `);
 
 ahead
   .slice(0,5)
   .reverse()
   .forEach(d => {
-	  // inside your `ahead.forEach(d => { … })` or similar:
-    aheadList.insertAdjacentHTML('beforeend', `
-      <div class="poi-row" data-id="${d.id}">
-        <span class="poi-name">
-          ${d.name} ${getCategoryIcons(d.categories)}
-        </span>
-        <span>${d._currentDistance.toFixed(1)} mi</span>
-      </div>`);
+	  // 1) Compute time in hours for the chosen mode
+	  const speed = modeSpeeds[currentMode];            // e.g. 3.1 for walk
+	  const hours = d._currentDistance / speed;
+	  const timeStr = toMinutesStr(hours);
+
+	  // 2) Render just Distance + Time
+	  aheadList.insertAdjacentHTML('beforeend', `
+	    <div class="poi-row" data-id="${d.id}">
+	      <div class="poi-name">
+	        ${d.name} ${getCategoryIcons(d.categories)}
+	      </div>
+	      <div class="poi-times">
+	        <span class="poi-distance">${d._currentDistance.toFixed(1)} mi</span>
+	        <span class="poi-time">${timeStr}</span>
+	      </div>
+	    </div>
+	  `);
+	  
   });
 
   // render Behind: three closest in normal order
-behind
-  .slice(0,3)
-  .forEach(d => {
-    behindList.insertAdjacentHTML('beforeend', `
-      <div class="poi-row" data-id="${d.id}">
-        <span class="poi-name">
-          ${d.name} ${getCategoryIcons(d.categories)}
-        </span>
-        <span>${d._currentDistance.toFixed(1)} mi</span>
-      </div>`);
+  behind.slice(0,3).forEach(d => {
+	  // 1) Compute time in hours for the chosen mode
+	  const speed = modeSpeeds[currentMode];            // e.g. 3.1 for walk
+	  const hours = d._currentDistance / speed;
+	  const timeStr = toMinutesStr(hours);
+
+	  // 2) Render just Distance + Time
+	  behindList.insertAdjacentHTML('beforeend', `
+	    <div class="poi-row" data-id="${d.id}">
+	      <div class="poi-name">
+	        ${d.name} ${getCategoryIcons(d.categories)}
+	      </div>
+	      <div class="poi-times">
+	        <span class="poi-distance">${d._currentDistance.toFixed(1)} mi</span>
+	        <span class="poi-time">${timeStr}</span>
+	      </div>
+	    </div>
+	  `);
+    
   });
 }
 

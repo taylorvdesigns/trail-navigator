@@ -305,10 +305,35 @@ html, body {
 /* ─── POI Rows ───────────────────────────────────────────────────── */
 /* Make each POI row look & feel like a button/link */
 .poi-row {
-  cursor: pointer;               /* show it’s clickable */
-  padding: 0.5rem 1rem;          /* give it some breathing room */
-  border-radius: 4px;            /* soften the corners */
-  transition: background 0.2s;   /* smooth hover effect */
+  display: flex !important;
+  justify-content: space-between !important;
+  align-items: center !important;
+  padding: 0.5rem 1rem !important;
+  border-bottom: 1px solid #eee !important;
+}
+
+.poi-name {
+  display: inline-flex;      /* keep icons and text aligned */
+  align-items: center;
+  gap: 0.5rem;               /* space between icon & text */
+}
+
+.poi-distance {
+  white-space: nowrap;       /* prevent wrapping the “mi” */
+}
+.poi-row.header-row {
+  font-weight: bold;
+  color: #333;
+  border-bottom: 1px solid #ccc;
+  margin-bottom: 0.5rem;
+}
+
+
+/* tighten up the icons in the header */
+.poi-row.header-row .poi-times.headers i {
+  font-size: 1.25rem;
+  margin: 0 0.75rem;
+  color: #555;
 }
 
 /* Hover/focus state */
@@ -329,6 +354,56 @@ html, body {
 .poi-row:focus .poi-name {
   text-decoration: underline;
 }
+
+.poi-row.header-row .section-label {
+  margin-bottom: 0;        /* kill that .5rem gap */
+  color: #333;             /* darker than the muted grey */
+  font-weight: bold;       /* stand out a bit more */
+  font-size: 1rem;         /* same size as your main labels */
+}
+
+.header-row .header-label {
+  margin: 0;
+  color: #333;
+  font-weight: bold;
+  font-size: 1rem;
+}
+
+/* optionally color‑code by mode */
+.poi-walk { color: #0077CC; }
+.poi-run  { color: #D2691E; }  /* e.g. chocolate */
+.poi-bike { color: #228B22; }  /* e.g. forest green */
+
+
+/* container for the 3 mode icons */
+.mode-toggle {
+  display: flex;
+  justify-content: flex-end;  /* push them to the right */
+  gap: 1rem;
+  padding: 0.5rem 1rem;
+  border-bottom: 1px solid #eee;
+}
+
+/* style your buttons */
+.mode-toggle button {
+  background: transparent;
+  border: 2px solid transparent;
+  border-radius: 4px;
+  font-size: 1.5rem;
+  width: 2.5rem; height: 2.5rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: border-color 0.2s, background 0.2s;
+}
+.mode-toggle button.active {
+  border-color: #0077CC;
+  background: rgba(0, 119, 204, 0.1);
+}
+
+
+
 
 
 /* Detail Overlay (always on top) */
