@@ -64,26 +64,60 @@ function getCategoryIcons(categories = []) {
     .join(' ');
 }
 
-// filters UI
-const filterContainer = document.querySelector('.filter-buttons');
-filterDefs.forEach(f => {
-  const btn = document.createElement('button');
-  btn.innerHTML    = `<i class="${f.iconClass}"></i>`;
-  btn.title        = f.title;
-  btn.dataset.slug = f.slug;
-  filterContainer.appendChild(btn);
+// 1) Keep track of exactly one filter slug (or null if none)
+let activeFilter = null;
 
-  btn.addEventListener('click', () => {
-    if (activeFilters.has(f.slug)) {
-      activeFilters.delete(f.slug);
-      btn.classList.remove('active');
-    } else {
-      activeFilters.add(f.slug);
-      btn.classList.add('active');
-    }
-    updateNavView();
+// 2) Grab both DOM containers _before_ you build any buttons
+const navFilterContainer  = document.querySelector('.filter-buttons');
+const listFilterContainer = document.querySelector('.list-filters');
+const listContent         = document.getElementById('list-content');
+
+// 3) Reusable builder for a single container
+function makeFilterButtons(container) {
+  container.innerHTML = '';
+  filterDefs.forEach(f => {
+    const btn = document.createElement('button');
+    btn.innerHTML    = `<i class="${f.iconClass}"></i>`;
+    btn.title        = f.title;
+    btn.dataset.slug = f.slug;
+    if (f.slug === activeFilter) btn.classList.add('active');
+    container.appendChild(btn);
+
+	btn.addEventListener('click', () => {
+	  const slug = btn.dataset.slug;    // ← no "a" here
+
+	  // toggle off if same, otherwise set
+	  activeFilter = (activeFilter === slug ? null : slug);
+
+	  // refresh the button states and both views
+	  refreshFilterUI();
+	  updateNavView();
+	  renderListView();
+	});
   });
-});
+}
+
+// 1) Build both panels once on startup:
+makeFilterButtons(navFilterContainer);
+makeFilterButtons(listFilterContainer);
+makeFilterButtons(document.querySelector('.list-filters'));
+
+// 2) Whenever the user clicks a filter (or you reset them),
+//    call this to toggle “active” appropriately:
+function refreshFilterUI() {
+  // pick up every filter button, in both Nav and List panels
+  document
+    .querySelectorAll('.filter-buttons button, .list-filters button')
+    .forEach(button => {
+      // ‘button’ is defined here—NOT ‘btn’
+      button.classList.toggle(
+        'active',
+        button.dataset.slug === activeFilter
+      );
+    });
+}
+
+
 
 // initialize map
 const DEFAULT_COORDS = [40.785091, -73.968285];
@@ -156,11 +190,11 @@ function updateNavView() {
 
   // 1) apply category filters
   let data = poiData;
-  if (activeFilters.size) {
-    data = data.filter(d =>
-      d.categories?.some(c => activeFilters.has(c.slug))
-    );
-  }
+  if (activeFilter) {
+      data = data.filter(dest =>
+        dest.categories?.some(c => c.slug === activeFilter)
+      );
+    }
 
   // 2) snap your position once
   const userPt    = turf.point([ lastPos[1], lastPos[0] ]);
@@ -205,14 +239,6 @@ ahead
   .reverse()
   .forEach(d => {
 	  // inside your `ahead.forEach(d => { … })` or similar:
-	  console.log(
-	    '→', d.name,
-	    'slugs =', d.categories.map(c=>c.slug),
-	    'html =', getCategoryIcons(d.categories)
-	  );
-	  
-	  
-	  
     aheadList.insertAdjacentHTML('beforeend', `
       <div class="poi-row" data-id="${d.id}">
         <span class="poi-name">
@@ -316,22 +342,44 @@ function handleNavRowClick(evt) {
 
 // ─── 6) Render the List view grouped by tags ────────────────────────
 function renderListView() {
+  // a) get only the inner container, CLEAR *that* one  
+  const container = document.getElementById('list-content');
+  container.innerHTML = '';
+
+  // b) optionally filter by the activeFilter  
+  let data = poiData;
+  if (activeFilter) {
+    data = data.filter(dest =>
+      dest.categories?.some(c => c.slug === activeFilter)
+    );
+  }
+
+  // c) group by the first tag’s SLUG (never undefined)
   const groups = {};
-  poiData.forEach(dest => {
-    const tag = dest.tags[0]?.slug;
+  data.forEach(dest => {
+    const tag = dest.tags?.[0];
     if (!tag) return;
-    if (!groups[tag]) groups[tag] = { name: dest.tags[0].name, items: [] };
-    groups[tag].items.push(dest);
+    const key = tag.slug;
+    if (!groups[key]) groups[key] = { name: tag.name, items: [] };
+    groups[key].items.push(dest);
   });
 
-  listOverlay.innerHTML = '';
+  console.log('renderListView → groups:', Object.keys(groups));
+
+  // d) build each section into #list-content
   Object.values(groups).forEach(group => {
     const sec = document.createElement('section');
-    const h2  = document.createElement('h2');
+    sec.style.marginBottom = '1.5rem';
+
+    const h2 = document.createElement('h2');
     h2.textContent = group.name;
+    h2.style.marginBottom = '0.5rem';
     sec.appendChild(h2);
-    const ul  = document.createElement('ul');
+
+    const ul = document.createElement('ul');
     ul.style.listStyle = 'none';
+    ul.style.padding   = '0';
+
     group.items.forEach(dest => {
       const li = document.createElement('li');
       li.classList.add('poi-row');
@@ -339,7 +387,8 @@ function renderListView() {
       li.innerHTML = `
         <span class="poi-name">
           ${dest.name} ${getCategoryIcons(dest.categories)}
-        </span>`;
+        </span>
+      `;
       li.addEventListener('click', () => {
         showDetail(dest);
         listOverlay.style.display = 'none';
@@ -347,10 +396,13 @@ function renderListView() {
       });
       ul.appendChild(li);
     });
+
     sec.appendChild(ul);
-    listOverlay.appendChild(sec);
+    container.appendChild(sec);
   });
 }
+
+
 
 // ─── 7) Load POIs from WordPress ────────────────────────────────────
 fetch('https://srtmaps.elev8maps.com/wp-json/geodir/v2/places?per_page=100')
@@ -511,10 +563,11 @@ tabNav.addEventListener('click', () => {
 
 
 tabList.addEventListener('click', () => {
-  navOverlay.style.display   = 'none';
-  listOverlay.style.display  = 'block';
-  entryOverlay.style.display = 'none';
+  listOverlay.style.display = 'flex';
+  navOverlay.style.display  = 'none';
+  entryOverlay.style.display= 'none';
   setActiveTab(tabList);
+  renderListView();        // rebuild with any active filter
 });
 
 

@@ -28,7 +28,7 @@
     </header>
 
     <section id="ahead-section">
-      <div class="section-label">Furthest ahead</div>
+      <div class="section-label">Destinations ahead</div>
       <div id="ahead-list"></div>
     </section>
 
@@ -38,8 +38,8 @@
     </section>
 
     <section id="behind-section">
+      <div class="section-label">Destinations behind</div>
       <div id="behind-list"></div>
-      <div class="section-label">Furthest behind</div>
     </section>
   </div>
 
@@ -57,7 +57,10 @@
 </div>
 
   <!-- List Overlay (hidden by default) -->
-  <div id="list-overlay"></div>
+<div id="list-overlay" style="display:none">
+  <div class="filter-buttons list-filters"></div>
+  <div id="list-content"></div>
+</div>
   
 <!-- Entry Overlay -->
 <div id="entry-overlay">

@@ -162,12 +162,41 @@ html, body {
 }
 
 /* ─── List Overlay ───────────────────────────────────────────────── */
+/* make the filter bar stick to the top */
 #list-overlay {
+  position: absolute;
+  top: 3.5rem;    /* below header */
+  bottom: 3rem;   /* above tabs */
+  left: 0; right: 0;
+  display: flex;
+  flex-direction: column;
+  background: #fff;
+  overflow: hidden;
+  z-index: 1100;
+}
+
+/* the filter row itself */
+#list-overlay .list-filters {
+  position: sticky;
+  top: 0;
+  z-index: 1001;
+  background: #fff;
+  padding: 0.5rem 1rem;
+  display: flex;
+  justify-content: center;
+  gap: 1rem;
+  border-bottom: 1px solid #ddd;
+}
+
+/* then the content beneath, scrollable */
+#list-overlay #list-content {
+  flex: 1;
   overflow-y: auto;
   padding: 1rem;
-  z-index: 1100;
-  font-family: sans-serif;
 }
+
+
+
 
 /* dim the map behind the modal */
 #entry-overlay {
