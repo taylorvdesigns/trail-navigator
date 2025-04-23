@@ -328,6 +328,7 @@ function promptManualEntryPoint() {
 
 // ─── 5) VIEW UPDATE FUNCTIONS ──────────────────────────────────────────
 // Update navigation view (ahead/behind lists)
+// Update the path distance calculation in updateNavView()
 function updateNavView() {
   if (!lastPos || !poiData.length || !routeLine) return;
 
@@ -339,35 +340,60 @@ function updateNavView() {
     );
   }
 
-  // Snap your position once
+  // Snap your position to trail
   const userPt = turf.point([lastPos[1], lastPos[0]]);
   const snappedU = turf.nearestPointOnLine(routeLine, userPt, { units: 'miles' });
-
+  
+  // Get the user's position along the trail as a fraction (0-1)
+  const userFraction = snappedU.properties.location;
+  
   const ahead = [];
   const behind = [];
   const bearing = userBearing ?? 0;
 
   data.forEach(dest => {
-    // Snap POI
+    // Snap POI to trail
     const poiPt = turf.point([dest.coords[1], dest.coords[0]]);
     const snappedP = turf.nearestPointOnLine(routeLine, poiPt, { units: 'miles' });
-
-    // Measure along-trail both ways
-    const seg1 = turf.lineSlice(snappedU, snappedP, routeLine);
-    const seg2 = turf.lineSlice(snappedP, snappedU, routeLine);
-    const d1 = turf.length(seg1, { units: 'miles' });
-    const d2 = turf.length(seg2, { units: 'miles' });
-    const dist = Math.min(d1, d2);
-    dest._currentDistance = dist;
-
-    // Bearing bucket
+    
+    // Get POI position along trail as fraction (0-1)
+    const poiFraction = snappedP.properties.location;
+    
+    // Calculate along-trail distance
+    let alongTrailDist;
+    
+    // If POI is further along the trail than user
+    if (poiFraction > userFraction) {
+      // Create a line slice from user to POI
+      const segment = turf.lineSlice(snappedU, snappedP, routeLine);
+      alongTrailDist = turf.length(segment, { units: 'miles' });
+    } 
+    // If POI is earlier on the trail than user
+    else {
+      // Create a line slice from POI to user
+      const segment = turf.lineSlice(snappedP, snappedU, routeLine);
+      alongTrailDist = turf.length(segment, { units: 'miles' });
+    }
+    
+    // Also calculate lateral distance from the POI to the trail
+    const lateralDist = turf.distance(
+      poiPt, 
+      turf.point(snappedP.geometry.coordinates), 
+      { units: 'miles' }
+    );
+    
+    // Store distances for later use
+    dest._currentDistance = alongTrailDist;
+    dest._lateralDistance = lateralDist;
+    
+    // Add to ahead/behind lists based on bearing
     const b = getBearing(lastPos, dest.coords);
     const diff = Math.min(Math.abs(b - bearing), 360 - Math.abs(b - bearing));
     if (diff <= 90) ahead.push(dest);
     else behind.push(dest);
   });
 
-  // Sort & save current lists
+  // Sort each list by actual trail distance
   ahead.sort((a, b) => a._currentDistance - b._currentDistance);
   behind.sort((a, b) => a._currentDistance - b._currentDistance);
   currentAhead = ahead;
