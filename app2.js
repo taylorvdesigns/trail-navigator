@@ -13,6 +13,9 @@ let entryPoints    = [];
 let activeFilter   = null;
 let currentAhead   = [];
 let currentBehind  = [];
+let userTrailDirection = null; // 1 = towards end, -1 = towards start
+let prevTrailPosition = null;  // Previous position fraction along trail
+let directionOverrideActive = false;
 
 // Elements that will be accessed globally
 let navOverlay, listOverlay, detailOverlay, entryOverlay;
@@ -101,6 +104,8 @@ function getCategoryIcons(categories = []) {
     .join(' ');
 }
 
+
+
 // ─── 2) UI FUNCTIONS ─────────────────────────────────────────────────
 // Create filter buttons
 function makeFilterButtons(container) {
@@ -144,6 +149,166 @@ function setActiveTab(tabBtn) {
   [tabMap, tabNav, tabList].forEach(b => b.classList.remove('active'));
   tabBtn.classList.add('active');
   lastActiveTab = tabBtn;
+}
+
+function toggleTrailDirection() {
+  // Always allow manual toggle
+  directionOverrideActive = true;
+  // If it's already 1, flip to -1; otherwise set to 1
+  userTrailDirection = userTrailDirection === 1 ? -1 : 1;
+
+  updateDirectionIndicator();
+  updateNavView();
+  console.log("Direction toggled:", userTrailDirection);
+}
+
+// Add function to update direction indicator
+function updateDirectionIndicator() {
+  const indicator = document.getElementById('direction-indicator');
+  if (!indicator) return;
+  
+  // Clear existing classes
+  indicator.classList.remove('towards-end', 'towards-start', 'auto-detected', 'manual-override');
+  
+  // Set new classes based on current state
+  if (userTrailDirection === 1) {
+    indicator.classList.add('towards-end');
+    indicator.innerHTML = '<i class="fas fa-arrow-up"></i> Towards Travelers Rest';
+  } else if (userTrailDirection === -1) {
+    indicator.classList.add('towards-start');
+    indicator.innerHTML = '<i class="fas fa-arrow-down"></i> Towards Conestee';
+  } else {
+    indicator.innerHTML = '<i class="fas fa-question"></i> Unknown';
+  }
+  
+  // Add class for auto/manual mode
+  indicator.classList.add(directionOverrideActive ? 'manual-override' : 'auto-detected');
+}
+
+// Add function to reset to automatic direction detection
+function resetToAutoDirection() {
+  directionOverrideActive = false;
+  userTrailDirection = null;
+  prevTrailPosition = null;
+  
+  // If we have a position, try to determine direction
+  if (lastPos) {
+    updateUserTrailOrientation(lastPos);
+  }
+  
+  updateDirectionIndicator();
+  updateNavView();
+}
+
+// Modify updateUserTrailOrientation to respect manual override
+function updateUserTrailOrientation(currentPos) {
+  // Skip automatic updates if manual override is active
+  if (directionOverrideActive) return userTrailDirection;
+  
+  // Rest of the function remains the same
+  if (!routeLine || !currentPos) return null;
+  
+  const userPt = turf.point([currentPos[1], currentPos[0]]);
+  const snapped = turf.nearestPointOnLine(routeLine, userPt, { units: 'kilometers' });
+  const currentFraction = snapped.properties.location;
+  
+  if (prevTrailPosition !== null) {
+    if (Math.abs(currentFraction - prevTrailPosition) > 0.001) {
+      userTrailDirection = (currentFraction > prevTrailPosition) ? 1 : -1;
+      updateDirectionIndicator();
+    }
+  } 
+  else if (userBearing !== null) {
+    // Bearing-based calculation as before
+    const coordIndex = snapped.properties.index;
+    if (coordIndex < routeLatLngs.length - 1) {
+      const trailBefore = routeLatLngs[Math.max(0, coordIndex)];
+      const trailAfter = routeLatLngs[Math.min(routeLatLngs.length - 1, coordIndex + 1)];
+      const trailBearing = getBearing(trailBefore, trailAfter);
+      const bearingDiff = Math.abs(userBearing - trailBearing);
+      const normalizedDiff = Math.min(bearingDiff, 360 - bearingDiff);
+      userTrailDirection = (normalizedDiff < 90) ? 1 : -1;
+      updateDirectionIndicator();
+    }
+  }
+  
+  prevTrailPosition = currentFraction;
+  return userTrailDirection;
+}
+
+
+function addDirectionControls() {
+  // Create container for direction controls in the nav overlay
+  const navHeader = document.querySelector('.nav-header') || document.getElementById('nav-overlay').querySelector('header');
+
+  // Create direction controls
+  const directionControls = document.createElement('div');
+  directionControls.className = 'direction-controls';
+  directionControls.innerHTML = `
+    <div id="direction-indicator" class="auto-detected">
+      <i class="fas fa-question"></i> Unknown
+    </div>
+    <div class="direction-buttons">
+      <button id="toggle-direction" title="Change Direction">
+        <i class="fas fa-exchange-alt"></i>
+      </button>
+      <button id="reset-direction" title="Reset to Auto">
+        <i class="fas fa-sync"></i>
+      </button>
+    </div>
+  `;
+
+  // Add to nav header
+  navHeader.appendChild(directionControls);
+
+  // Add event listeners
+  document.getElementById('toggle-direction').addEventListener('click', toggleTrailDirection);
+  document.getElementById('reset-direction').addEventListener('click', resetToAutoDirection);
+
+  // Add some CSS for the controls
+  const style = document.createElement('style');
+  style.textContent = `
+    .direction-controls {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-top: 8px;
+      padding: 4px 8px;
+      background: rgba(255,255,255,0.1);
+      border-radius: 4px;
+    }
+
+    #direction-indicator {
+      font-size: 0.9rem;
+      padding: 4px 8px;
+      border-radius: 3px;
+    }
+
+    #direction-indicator.manual-override {
+      background: #ff9800;
+      color: white;
+    }
+
+    .direction-buttons button {
+      background: transparent;
+      border: 1px solid #ccc;
+      border-radius: 3px;
+      padding: 4px 8px;
+      margin-left: 5px;
+      cursor: pointer;
+    }
+
+    .direction-buttons button:hover {
+      background: rgba(255,255,255,0.1);
+    }
+
+    .towards-end i { transform: rotate(0deg); }
+    .towards-start i { transform: rotate(180deg); }
+  `;
+  document.head.appendChild(style);
+
+  // Initial update
+  updateDirectionIndicator();
 }
 
 // ─── 3) DATA LOADING FUNCTIONS ───────────────────────────────────────
@@ -351,47 +516,52 @@ function updateNavView() {
   const behind = [];
   const bearing = userBearing ?? 0;
 
+  // inside updateNavView(), after you compute `userFraction` and define `ahead`/`behind`:
   data.forEach(dest => {
     // Snap POI to trail
-    const poiPt = turf.point([dest.coords[1], dest.coords[0]]);
+    const poiPt    = turf.point([dest.coords[1], dest.coords[0]]);
     const snappedP = turf.nearestPointOnLine(routeLine, poiPt, { units: 'miles' });
-    
-    // Get POI position along trail as fraction (0-1)
     const poiFraction = snappedP.properties.location;
-    
-    // Calculate along-trail distance
-    let alongTrailDist;
-    
-    // If POI is further along the trail than user
-    if (poiFraction > userFraction) {
-      // Create a line slice from user to POI
-      const segment = turf.lineSlice(snappedU, snappedP, routeLine);
-      alongTrailDist = turf.length(segment, { units: 'miles' });
-    } 
-    // If POI is earlier on the trail than user
-    else {
-      // Create a line slice from POI to user
-      const segment = turf.lineSlice(snappedP, snappedU, routeLine);
-      alongTrailDist = turf.length(segment, { units: 'miles' });
+
+    // Compute along-trail distance (slice direction depends on manual override)
+    let segment;
+    if (directionOverrideActive && userTrailDirection === -1) {
+      // manual “towards start”: slice from POI → you
+      segment = turf.lineSlice(snappedP, snappedU, routeLine);
+    } else {
+      // default (auto) or manual “towards end”: slice from you → POI
+      segment = turf.lineSlice(snappedU, snappedP, routeLine);
     }
-    
-    // Also calculate lateral distance from the POI to the trail
+    const alongTrailDist = turf.length(segment, { units: 'miles' });
+
+    // Compute lateral distance as before
     const lateralDist = turf.distance(
-      poiPt, 
-      turf.point(snappedP.geometry.coordinates), 
+      poiPt,
+      turf.point(snappedP.geometry.coordinates),
       { units: 'miles' }
     );
-    
-    // Store distances for later use
+
     dest._currentDistance = alongTrailDist;
     dest._lateralDistance = lateralDist;
-    
-    // Add to ahead/behind lists based on bearing
-    const b = getBearing(lastPos, dest.coords);
-    const diff = Math.min(Math.abs(b - bearing), 360 - Math.abs(b - bearing));
-    if (diff <= 90) ahead.push(dest);
-    else behind.push(dest);
+
+    // Decide whether this dest is “ahead” or “behind”
+    let isAhead;
+    if (directionOverrideActive) {
+      // manual override: use fraction comparison
+      isAhead = (userTrailDirection === 1)
+        ? poiFraction > userFraction
+        : poiFraction < userFraction;
+    } else {
+      // auto mode: still use your bearing logic
+      const b    = getBearing(lastPos, dest.coords);
+      const diff = Math.min(Math.abs(b - bearing), 360 - Math.abs(b - bearing));
+      isAhead = diff <= 90;
+    }
+
+    if (isAhead) ahead.push(dest);
+    else           behind.push(dest);
   });
+  
 
   // Sort each list by actual trail distance
   ahead.sort((a, b) => a._currentDistance - b._currentDistance);
@@ -751,6 +921,10 @@ function initializeAppUI() {
   makeFilterButtons(navFilterContainer);
   makeFilterButtons(listFilterContainer);
   
+  
+  
+  
+  
   // Initialize mode buttons
   const modeButtons = document.querySelectorAll('.mode-btn');
   modeButtons.forEach(btn => {
@@ -822,19 +996,11 @@ function initializeAppUI() {
     renderListView();
 	
 	});
-  
-	// Tab click handlers
-	tabList.addEventListener('click', function() {
-	  listOverlay.style.display = 'flex';
-	  navOverlay.style.display = 'none';
-	  entryOverlay.style.display = 'none';
-	  setActiveTab(tabList);
-	  renderListView();
-	});
 
 	// Set initial active tab
 	setActiveTab(tabMap);
-	}
+	
+};
 
 	// Retry fetch function for error handling
 	window.retryFetch = function() {
@@ -849,6 +1015,9 @@ function initializeAppUI() {
   
 	  // Initialize UI components
 	  initializeAppUI();
+	  
+  	  // Call this in your initializeAppUI function
+  	  addDirectionControls();
   
 	  // Start geolocation tracking
 	  setupGeolocationWithErrorHandling();
@@ -857,6 +1026,9 @@ function initializeAppUI() {
 	  tryLoadRouteData();
 	  tryLoadPoiData();
 	}
+	
+
 
 	// Start the app when DOM is loaded
 	document.addEventListener('DOMContentLoaded', initApp);
+	
