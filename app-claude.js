@@ -5,6 +5,9 @@
  * data fetching, and user interface components of your trail app.
  */
 
+
+
+
 // ─── 1) ERROR TYPES & CONFIG ───────────────────────────────────────────────────
 // Define error types for different categories
 const ErrorTypes = {
@@ -15,6 +18,126 @@ const ErrorTypes = {
   DATA: 'data',
   UI: 'ui'
 };
+
+// ----- ADD THESE NEAR THE TOP OF YOUR ERROR HANDLER FILE -----
+
+// Check for required functions and provide fallbacks
+function ensureRequiredFunctions() {
+  // Define fallbacks for required functions if they don't exist
+  window.updateNavView = window.updateNavView || function() {
+    console.warn("updateNavView called but not defined");
+  };
+  
+  window.renderListView = window.renderListView || function() {
+    console.warn("renderListView called but not defined");
+  };
+  
+  window.showDetail = window.showDetail || function() {
+    console.warn("showDetail called but not defined");
+  };
+  
+  window.promptManualEntryPoint = window.promptManualEntryPoint || function() {
+    console.warn("promptManualEntryPoint called but not defined");
+    
+    // Basic fallback implementation if the main app doesn't define it
+    if (window.entryOverlay) {
+      window.entryOverlay.style.display = 'block';
+      if (typeof window.hasManualEntry !== 'undefined') {
+        window.hasManualEntry = true;
+      }
+    }
+  };
+}
+
+// ----- MODIFY THE initErrorHandling FUNCTION -----
+
+function initErrorHandling() {
+  // Ensure required functions exist first
+  ensureRequiredFunctions();
+  
+  // Create stylesheet for animations
+  const style = document.createElement('style');
+  style.textContent = `
+    /* Your CSS remains the same */
+  `;
+  document.head.appendChild(style);
+  
+  // Create global error handler
+  window.appErrorHandler = new ErrorHandler();
+  
+  // Setup all error handling systems
+  window.setupGeolocationWithErrorHandling = setupGeolocationWithErrorHandling;
+  
+  // Only call these setups if they aren't being called from the main app
+  setupMapErrorHandling();
+  setupUIErrorHandling();
+  
+  console.log('Error handling system initialized');
+  
+  // Return the error handler for direct use
+  return window.appErrorHandler;
+}
+
+// ----- MODIFY setupUIErrorHandling -----
+
+function setupUIErrorHandling() {
+  // Wrap key UI functions with try/catch
+  const errorHandler = window.appErrorHandler;
+  
+  // Safe wrapper for UI updates
+  window.safeUpdateUI = function(fn, context = 'UI') {
+    try {
+      return fn();
+    } catch (err) {
+      console.error(`Error in ${context}:`, err);
+      if (errorHandler) {
+        errorHandler.handleError(ErrorTypes.UI, 'render-failed', {
+          context,
+          message: err.message
+        });
+      }
+      return null;
+    }
+  };
+  
+  // Add global error catching
+  window.addEventListener('error', (event) => {
+    if (errorHandler) {
+      errorHandler.handleError(ErrorTypes.UI, 'runtime-error', {
+        message: event.message,
+        source: event.filename,
+        line: event.lineno,
+        column: event.colno
+      });
+    }
+  });
+  
+  // Only wrap functions if they exist and haven't been wrapped yet
+  if (window.showDetail && !window.showDetail._wrapped) {
+    const originalShowDetail = window.showDetail;
+    window.showDetail = function(dest) {
+      window.showDetail._wrapped = true;
+      return window.safeUpdateUI(() => originalShowDetail(dest), 'showDetail');
+    };
+  }
+  
+  if (window.updateNavView && !window.updateNavView._wrapped) {
+    const originalUpdateNavView = window.updateNavView;
+    window.updateNavView = function() {
+      window.updateNavView._wrapped = true;
+      return window.safeUpdateUI(() => originalUpdateNavView(), 'updateNavView');
+    };
+  }
+  
+  if (window.renderListView && !window.renderListView._wrapped) {
+    const originalRenderListView = window.renderListView;
+    window.renderListView = function() {
+      window.renderListView._wrapped = true;
+      return window.safeUpdateUI(() => originalRenderListView(), 'renderListView');
+    };
+  }
+}
+
 
 // Configuration for error messages and recovery actions
 const ErrorConfig = {
