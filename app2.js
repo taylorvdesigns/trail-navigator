@@ -16,6 +16,7 @@ let currentBehind  = [];
 let userTrailDirection = null; // 1 = towards end, -1 = towards start
 let prevTrailPosition = null;  // Previous position fraction along trail
 let directionOverrideActive = false;
+let trailEndpoints = { start: "Trail Start", end: "Trail End" };
 
 // Elements that will be accessed globally
 let navOverlay, listOverlay, detailOverlay, entryOverlay;
@@ -196,7 +197,7 @@ function resetToAutoDirection() {
     updateUserTrailOrientation(lastPos);
   }
   
-  updateDirectionIndicator();
+  updateDirectionButtons();
   updateNavView();
 }
 
@@ -231,7 +232,7 @@ function updateUserTrailOrientation(currentPos) {
       updateDirectionIndicator();
     }
   }
-  
+  updateDirectionButtons();
   prevTrailPosition = currentFraction;
   return userTrailDirection;
 }
@@ -246,13 +247,16 @@ function addDirectionControls() {
   directionControls.className = 'direction-controls';
   directionControls.innerHTML = `
     <div id="direction-indicator" class="auto-detected">
-      <i class="fas fa-question"></i> Unknown
+      <span>Trail Direction</span>
     </div>
     <div class="direction-buttons">
-      <button id="toggle-direction" title="Change Direction">
-        <i class="fas fa-exchange-alt"></i>
+      <button id="direction-start" title="Head towards trail start">
+        <i class="fas fa-arrow-left"></i> <span>${trailEndpoints.start}</span>
       </button>
-      <button id="reset-direction" title="Reset to Auto">
+      <button id="direction-end" title="Head towards trail end">
+        <span>${trailEndpoints.end}</span> <i class="fas fa-arrow-right"></i>
+      </button>
+      <button id="reset-direction" title="Reset to auto-detect">
         <i class="fas fa-sync"></i>
       </button>
     </div>
@@ -261,54 +265,116 @@ function addDirectionControls() {
   // Add to nav header
   navHeader.appendChild(directionControls);
 
-  // Add event listeners
-  document.getElementById('toggle-direction').addEventListener('click', toggleTrailDirection);
-  document.getElementById('reset-direction').addEventListener('click', resetToAutoDirection);
+  // Add event listeners (old)
+  // document.getElementById('toggle-direction').addEventListener('click', toggleTrailDirection);
+  // document.getElementById('reset-direction').addEventListener('click', resetToAutoDirection);
 
+// Add event listeners
+  document.getElementById('direction-start').addEventListener('click', () => {
+    userTrailDirection = -1; // Towards start
+    directionOverrideActive = true;
+    updateDirectionButtons();
+    updateNavView();
+  });
+  
+  document.getElementById('direction-end').addEventListener('click', () => {
+    userTrailDirection = 1;  // Towards end
+    directionOverrideActive = true;
+    updateDirectionButtons();
+    updateNavView();
+  });
+  
+  document.getElementById('reset-direction').addEventListener('click', resetToAutoDirection);
+  
   // Add some CSS for the controls
   const style = document.createElement('style');
   style.textContent = `
     .direction-controls {
       display: flex;
-      align-items: center;
-      justify-content: space-between;
+      flex-direction: column;
       margin-top: 8px;
-      padding: 4px 8px;
+      padding: 8px;
       background: rgba(255,255,255,0.1);
       border-radius: 4px;
     }
-
+    
     #direction-indicator {
       font-size: 0.9rem;
-      padding: 4px 8px;
-      border-radius: 3px;
+      padding: 4px 0;
+      margin-bottom: 6px;
+      text-align: center;
+      color: #ccc;
     }
-
+    
     #direction-indicator.manual-override {
-      background: #ff9800;
-      color: white;
+      color: #ff9800;
     }
-
+    
+    .direction-buttons {
+      display: flex;
+      justify-content: space-between;
+    }
+    
     .direction-buttons button {
       background: transparent;
       border: 1px solid #ccc;
       border-radius: 3px;
-      padding: 4px 8px;
-      margin-left: 5px;
+      padding: 6px 12px;
       cursor: pointer;
+      flex-grow: 1;
+      margin: 0 3px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      max-width: 45%;
     }
-
-    .direction-buttons button:hover {
-      background: rgba(255,255,255,0.1);
+    
+    .direction-buttons button.active {
+      background: #0077CC;
+      color: white;
+      border-color: #0077CC;
     }
-
-    .towards-end i { transform: rotate(0deg); }
-    .towards-start i { transform: rotate(180deg); }
+    
+    #reset-direction {
+      flex-grow: 0 !important;
+      max-width: 40px !important;
+    }
   `;
   document.head.appendChild(style);
-
+  
   // Initial update
-  updateDirectionIndicator();
+  updateDirectionButtons();
+}
+
+// Add a new function to update the direction buttons
+function updateDirectionButtons() {
+  const startBtn = document.getElementById('direction-start');
+  const endBtn = document.getElementById('direction-end');
+  const indicator = document.getElementById('direction-indicator');
+  
+  if (!startBtn || !endBtn) return;
+  
+  // Update button text with current endpoint names
+  startBtn.querySelector('span').textContent = trailEndpoints.start;
+  endBtn.querySelector('span').textContent = trailEndpoints.end;
+  
+  // Remove active class from both
+  startBtn.classList.remove('active');
+  endBtn.classList.remove('active');
+  
+  // Update indicator and active state
+  if (userTrailDirection === 1) {
+    endBtn.classList.add('active');
+    indicator.innerHTML = `Heading towards <strong>${trailEndpoints.end}</strong>`;
+  } else if (userTrailDirection === -1) {
+    startBtn.classList.add('active');
+    indicator.innerHTML = `Heading towards <strong>${trailEndpoints.start}</strong>`;
+  } else {
+    indicator.innerHTML = 'Auto-detecting direction...';
+  }
+  
+  // Show if auto or manual
+  indicator.classList.toggle('manual-override', directionOverrideActive);
 }
 
 // ─── 3) DATA LOADING FUNCTIONS ───────────────────────────────────────
@@ -359,6 +425,16 @@ function processRouteData(data) {
     document.getElementById('trail-header').textContent = tn;
     const navName = document.getElementById('nav-trail-name');
     if (navName) navName.textContent = tn;
+	
+ // Extract endpoint names from data if available, or use defaults
+    // This would depend on your data structure, adapt as needed
+    trailEndpoints.start = data.route.start_name || "Trail Start";
+    trailEndpoints.end = data.route.end_name || "Trail End";
+	
+// Update direction controls if they exist
+    if (document.getElementById('direction-start')) {
+      updateDirectionButtons();
+    }
     
     // Update views if we have position data
     if (lastPos) {
