@@ -16,7 +16,10 @@ let currentBehind  = [];
 let userTrailDirection = null; // 1 = towards end, -1 = towards start
 let prevTrailPosition = null;  // Previous position fraction along trail
 let directionOverrideActive = false;
-let trailEndpoints = { start: "Trail Start", end: "Trail End" };
+let trailEndpoints = { start: "Travelers Rest", end: "Conestee Park" };
+let maxNavItems = 5; // Maximum items to show in ahead/behind lists
+let expandedGroups = []; // Track which groups are expanded
+let currentPage = 0; // For paging through filtered results
 
 // Elements that will be accessed globally
 let navOverlay, listOverlay, detailOverlay, entryOverlay;
@@ -66,6 +69,11 @@ L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
 }).addTo(map);
 
 // ─── 1) HELPER FUNCTIONS ─────────────────────────────────────────────
+// helper
+function toMinutesStr(hours) {
+  return Math.round(hours * 60) + ' min';
+}
+
 // Bearing calculations
 function getBearing(start, end) {
   const toRad = d => d * Math.PI/180;
@@ -105,6 +113,160 @@ function getCategoryIcons(categories = []) {
     .join(' ');
 }
 
+// Function to cluster POIs based on proximity and tags
+function clusterPOIs(pois) {
+  // Skip clustering if a filter is active
+  if (activeFilter) return { clusters: [], solos: pois };
+  
+  // Add debugging
+  // console.log("Starting clustering with", pois.length, "POIs");
+  
+  const clusters = {};
+  const solos = [];
+  const clusterDistance = 2; // define cluster radius
+  
+  // First pass: identify cluster candidates by tags
+  pois.forEach(poi => {
+    // Debug POI tags
+    // console.log("POI:", poi.name, "Tags:", poi.tags);
+    
+    // Get the first tag as potential cluster key
+    const tag = poi.tags?.[0]?.slug;
+    if (!tag) {
+      // console.log("No tag found for", poi.name);
+      solos.push(poi);
+      return;
+    }
+    
+    // Initialize cluster if it doesn't exist
+    if (!clusters[tag]) {
+      clusters[tag] = {
+        tag: tag,
+        name: poi.tags[0].name,
+        items: [],
+        center: [...poi.coords], // Initial center
+        _distance: poi._currentDistance // Use first POI's distance
+      };
+    }
+    
+    // Add to potential cluster
+    clusters[tag].items.push(poi);
+  });
+  
+  // Log potential clusters
+  /* console.log("Potential clusters:", Object.keys(clusters).map(k => ({
+    tag: k,
+    name: clusters[k].name,
+    count: clusters[k].items.length
+  })));
+  */
+  // Second pass: validate clusters by proximity
+  const validClusters = [];
+  Object.values(clusters).forEach(cluster => {
+    // Single-item clusters become solos
+    if (cluster.items.length <= 1) {
+      // console.log("Cluster too small:", cluster.name);
+      solos.push(...cluster.items);
+      return;
+    }
+    
+    // Check if all items are within threshold distance of each other
+    const items = cluster.items;
+    let isValidCluster = true;
+    
+    // Simplify cluster validation:
+    // Instead of checking all pairs, check if each POI is close to the cluster center
+    const centerCoords = cluster.center;
+    for (let i = 0; i < items.length && isValidCluster; i++) {
+      const dist = haversineDistance(centerCoords, items[i].coords);
+      if (dist > clusterDistance) {
+        isValidCluster = false;
+        // console.log("Cluster invalid - POI too far from center:", items[i].name);
+      }
+    }
+    
+    // If valid cluster, keep it; otherwise break it up into solos
+    if (isValidCluster && items.length > 1) {
+      // Calculate average distance for sorting
+      cluster._distance = items.reduce((sum, item) => sum + item._currentDistance, 0) / items.length;
+      validClusters.push(cluster);
+      // console.log("Valid cluster created:", cluster.name, "with", items.length, "items");
+    } else {
+      solos.push(...items);
+    }
+  });
+  
+  // console.log("Clustering complete. Valid clusters:", validClusters.length, "Solo POIs:", solos.length);
+  return { clusters: validClusters, solos };
+}
+
+// Helper function to render nav items (clusters or individual POIs)
+function renderNavItems(container, items, isAhead) {
+  items.forEach(item => {
+    const speed = MODE_SPEEDS[currentMode];
+    
+    // Check if it's a cluster or individual POI
+    const isCluster = item.items !== undefined;
+    const distance = item._distance || item._currentDistance;
+    const hours = distance / speed;
+    const timeStr = toMinutesStr(hours);
+    
+    if (isCluster) {
+      // Render cluster row
+      container.insertAdjacentHTML('beforeend', `
+        <div class="poi-row cluster-row" data-tag="${item.tag}">
+          <div class="poi-name">
+            <i class="fas fa-layer-group"></i> ${item.name} (${item.items.length})
+          </div>
+          <div class="poi-times">
+            <span class="poi-distance">${distance.toFixed(1)} mi</span>
+            <span class="poi-time">${timeStr}</span>
+          </div>
+        </div>
+      `);
+    } else {
+      // Render individual POI row
+      container.insertAdjacentHTML('beforeend', `
+        <div class="poi-row" data-id="${item.id}">
+          <div class="poi-name">
+            ${item.name} ${getCategoryIcons(item.categories)}
+          </div>
+          <div class="poi-times">
+            <span class="poi-distance">${distance.toFixed(1)} mi</span>
+            <span class="poi-time">${timeStr}</span>
+          </div>
+        </div>
+      `);
+    }
+  });
+  
+  // Add event listeners
+  container.querySelectorAll('.poi-row[data-id]').forEach(row => {
+    row.addEventListener('click', () => {
+      const id = +row.dataset.id;
+      const dest = poiData.find(d => d.id === id);
+      if (dest) showDetail(dest);
+    });
+  });
+  
+  container.querySelectorAll('.cluster-row').forEach(row => {
+    row.addEventListener('click', () => {
+      const tag = row.dataset.tag;
+      showClusterDetail(tag);
+    });
+  });
+}
+
+// Function to handle cluster clicks
+function showClusterDetail(tag) {
+  // Switch to list view and filter by tag
+  listOverlay.style.display = 'flex';
+  navOverlay.style.display = 'none';
+  setActiveTab(tabList);
+  
+  // Filter list by tag
+  renderListView(tag);
+}
 
 
 // ─── 2) UI FUNCTIONS ─────────────────────────────────────────────────
@@ -160,7 +322,7 @@ function toggleTrailDirection() {
 
   updateDirectionIndicator();
   updateNavView();
-  console.log("Direction toggled:", userTrailDirection);
+  // console.log("Direction toggled:", userTrailDirection);
 }
 
 // Add function to update direction indicator
@@ -428,8 +590,8 @@ function processRouteData(data) {
 	
  // Extract endpoint names from data if available, or use defaults
     // This would depend on your data structure, adapt as needed
-    trailEndpoints.start = data.route.start_name || "Trail Start";
-    trailEndpoints.end = data.route.end_name || "Trail End";
+    trailEndpoints.start = data.route.start_name || "Travelers Rest";
+    trailEndpoints.end = data.route.end_name || "Conestee Park";
 	
 // Update direction controls if they exist
     if (document.getElementById('direction-start')) {
@@ -588,64 +750,125 @@ function updateNavView() {
   // Get the user's position along the trail as a fraction (0-1)
   const userFraction = snappedU.properties.location;
   
-  const ahead = [];
-  const behind = [];
-  const bearing = userBearing ?? 0;
-
-  // inside updateNavView(), after you compute `userFraction` and define `ahead`/`behind`:
+  // Calculate distances for all POIs
   data.forEach(dest => {
     // Snap POI to trail
-    const poiPt    = turf.point([dest.coords[1], dest.coords[0]]);
+    const poiPt = turf.point([dest.coords[1], dest.coords[0]]);
     const snappedP = turf.nearestPointOnLine(routeLine, poiPt, { units: 'miles' });
+    
+    // Get POI position along trail as fraction (0-1)
     const poiFraction = snappedP.properties.location;
+    
+	// Calculate along-trail distance
+	let alongTrailDist;
 
-    // Compute along-trail distance (slice direction depends on manual override)
-    let segment;
-    if (directionOverrideActive && userTrailDirection === -1) {
-      // manual “towards start”: slice from POI → you
-      segment = turf.lineSlice(snappedP, snappedU, routeLine);
-    } else {
-      // default (auto) or manual “towards end”: slice from you → POI
-      segment = turf.lineSlice(snappedU, snappedP, routeLine);
-    }
-    const alongTrailDist = turf.length(segment, { units: 'miles' });
-
-    // Compute lateral distance as before
+	// Consider trail direction and actual distance
+	if ((userTrailDirection === 1 && poiFraction > userFraction) || 
+	    (userTrailDirection === -1 && poiFraction < userFraction)) {
+	  // POI is ahead based on direction
+	  const segment = turf.lineSlice(snappedU, snappedP, routeLine);
+	  alongTrailDist = turf.length(segment, { units: 'miles' });
+	} else {
+	  // POI is behind based on direction
+	  const segment = turf.lineSlice(snappedP, snappedU, routeLine);
+	  alongTrailDist = turf.length(segment, { units: 'miles' });
+	}
+    
+    // Also calculate lateral distance from the POI to the trail
     const lateralDist = turf.distance(
-      poiPt,
-      turf.point(snappedP.geometry.coordinates),
+      poiPt, 
+      turf.point(snappedP.geometry.coordinates), 
       { units: 'miles' }
     );
-
+    
+    // Store distances for later use
     dest._currentDistance = alongTrailDist;
     dest._lateralDistance = lateralDist;
-
-    // Decide whether this dest is “ahead” or “behind”
-    let isAhead;
-    if (directionOverrideActive) {
-      // manual override: use fraction comparison
-      isAhead = (userTrailDirection === 1)
-        ? poiFraction > userFraction
-        : poiFraction < userFraction;
-    } else {
-      // auto mode: still use your bearing logic
-      const b    = getBearing(lastPos, dest.coords);
-      const diff = Math.min(Math.abs(b - bearing), 360 - Math.abs(b - bearing));
-      isAhead = diff <= 90;
-    }
-
-    if (isAhead) ahead.push(dest);
-    else           behind.push(dest);
   });
+
+  // Determine ahead/behind based on bearing or trail direction
+  const ahead = [];
+  const behind = [];
   
+  // Use trail direction if available, otherwise use bearing
+  if (userTrailDirection !== null) {
+    // If going towards end (1), POIs with higher fraction are ahead
+    if (userTrailDirection === 1) {
+      data.forEach(dest => {
+        const poiPt = turf.point([dest.coords[1], dest.coords[0]]);
+        const snappedP = turf.nearestPointOnLine(routeLine, poiPt, { units: 'miles' });
+        const poiFraction = snappedP.properties.location;
+        
+        if (poiFraction > userFraction) ahead.push(dest);
+        else behind.push(dest);
+      });
+    } 
+    // If going towards start (-1), POIs with lower fraction are ahead
+    else {
+      data.forEach(dest => {
+        const poiPt = turf.point([dest.coords[1], dest.coords[0]]);
+        const snappedP = turf.nearestPointOnLine(routeLine, poiPt, { units: 'miles' });
+        const poiFraction = snappedP.properties.location;
+        
+        if (poiFraction < userFraction) ahead.push(dest);
+        else behind.push(dest);
+      });
+    }
+  } 
+  // Fall back to bearing-based ahead/behind
+  else {
+    const bearing = userBearing ?? 0;
+    data.forEach(dest => {
+      const b = getBearing(lastPos, dest.coords);
+      const diff = Math.min(Math.abs(b - bearing), 360 - Math.abs(b - bearing));
+      if (diff <= 90) ahead.push(dest);
+      else behind.push(dest);
+    });
+  }
 
   // Sort each list by actual trail distance
-  ahead.sort((a, b) => a._currentDistance - b._currentDistance);
+  ahead.sort((a, b) => b._currentDistance - a._currentDistance);
   behind.sort((a, b) => a._currentDistance - b._currentDistance);
+  
   currentAhead = ahead;
   currentBehind = behind;
 
-  // Render Ahead: five closest but *reverse* so furthest is at top
+  // Cluster POIs if no filter is active
+  const aheadResult = clusterPOIs(ahead);
+  const behindResult = clusterPOIs(behind);
+  
+  // Prepare rendering data
+  let aheadItems = [];
+  let behindItems = [];
+  
+  if (activeFilter) {
+    // When filtered, show individual POIs with pagination
+    const startIndex = currentPage * maxNavItems;
+    aheadItems = ahead.slice(startIndex, startIndex + maxNavItems);
+    behindItems = behind.slice(0, 3); // Always show top 3 behind
+    
+    // Check if we need pagination
+    const hasMoreAhead = ahead.length > startIndex + maxNavItems;
+    
+    // Reset page if we switched filters and don't have enough
+    if (aheadItems.length === 0 && currentPage > 0) {
+      currentPage = 0;
+      aheadItems = ahead.slice(0, maxNavItems);
+    }
+  } else {
+    // When not filtered, mix clusters and solos
+    const allAheadItems = [...aheadResult.clusters, ...aheadResult.solos];
+    const allBehindItems = [...behindResult.clusters, ...behindResult.solos];
+    
+    // Sort by distance
+    allAheadItems.sort((a, b) => a._distance - b._distance);
+    allBehindItems.sort((a, b) => a._distance - b._distance);
+    
+    aheadItems = allAheadItems.slice(0, maxNavItems);
+    behindItems = allBehindItems.slice(0, 3);
+  }
+
+  // Clear and rebuild the lists
   aheadList.innerHTML = '';
   behindList.innerHTML = '';
   
@@ -689,109 +912,227 @@ function updateNavView() {
   `);
 
   // Render ahead list
-  ahead
-    .slice(0, 5)
-    .reverse()
-    .forEach(d => {
-      // Compute time for the chosen mode
-      const speed = MODE_SPEEDS[currentMode];
-      const hours = d._currentDistance / speed;
-      const timeStr = toMinutesStr(hours);
-
-      // Render destination row
+  renderNavItems(aheadList, aheadItems, true);
+  
+  // Add pagination if needed (for filtered view)
+  if (activeFilter && ahead.length > maxNavItems) {
+    const totalPages = Math.ceil(ahead.length / maxNavItems);
+    if (totalPages > 1) {
       aheadList.insertAdjacentHTML('beforeend', `
-        <div class="poi-row" data-id="${d.id}">
-          <div class="poi-name">
-            ${d.name} ${getCategoryIcons(d.categories)}
-          </div>
-          <div class="poi-times">
-            <span class="poi-distance">${d._currentDistance.toFixed(1)} mi</span>
-            <span class="poi-time">${timeStr}</span>
-          </div>
+        <div class="pagination">
+          ${currentPage > 0 ? 
+            `<button class="prev-page"><i class="fas fa-chevron-left"></i> Previous</button>` : 
+            ''}
+          <span class="page-info">Page ${currentPage + 1} of ${totalPages}</span>
+          ${currentPage < totalPages - 1 ? 
+            `<button class="next-page">Next <i class="fas fa-chevron-right"></i></button>` : 
+            ''}
         </div>
       `);
-    });
+      
+      // Add pagination event handlers
+      const prevBtn = aheadList.querySelector('.prev-page');
+      const nextBtn = aheadList.querySelector('.next-page');
+      
+      if (prevBtn) {
+        prevBtn.addEventListener('click', () => {
+          if (currentPage > 0) {
+            currentPage--;
+            updateNavView();
+          }
+        });
+      }
+      
+      if (nextBtn) {
+        nextBtn.addEventListener('click', () => {
+          if (currentPage < totalPages - 1) {
+            currentPage++;
+            updateNavView();
+          }
+        });
+      }
+    }
+  }
 
   // Render behind list
-  behind.slice(0, 3).forEach(d => {
-    // Compute time for the chosen mode
-    const speed = MODE_SPEEDS[currentMode];
-    const hours = d._currentDistance / speed;
-    const timeStr = toMinutesStr(hours);
-
-    // Render destination row
-    behindList.insertAdjacentHTML('beforeend', `
-      <div class="poi-row" data-id="${d.id}">
-        <div class="poi-name">
-          ${d.name} ${getCategoryIcons(d.categories)}
-        </div>
-        <div class="poi-times">
-          <span class="poi-distance">${d._currentDistance.toFixed(1)} mi</span>
-          <span class="poi-time">${timeStr}</span>
-        </div>
-      </div>
-    `);
-  });
+  renderNavItems(behindList, behindItems, false);
 }
 
-// Render list view grouped by tags
-function renderListView() {
+// Modify renderListView to accept a tag filter
+function renderListView(tagFilter = null) {
   // Get container and clear it
   const container = document.getElementById('list-content');
   container.innerHTML = '';
 
-  // Optionally filter by the activeFilter
+  // Apply filters (category and now tag)
   let data = poiData;
   if (activeFilter) {
     data = data.filter(dest =>
       dest.categories?.some(c => c.slug === activeFilter)
     );
   }
+  
+  // Apply tag filter if provided
+  if (tagFilter) {
+    data = data.filter(dest =>
+      dest.tags?.some(t => t.slug === tagFilter)
+    );
+    
+    // Add a "back to all" button
+    const backBtn = document.createElement('button');
+    backBtn.innerHTML = `<i class="fas fa-arrow-left"></i> Back to all`;
+    backBtn.className = 'back-button';
+    backBtn.addEventListener('click', () => {
+      renderListView(); // Reset to no tag filter
+    });
+    container.appendChild(backBtn);
+    
+    // Add tag title
+    const tagName = poiData.find(p => p.tags?.some(t => t.slug === tagFilter))?.tags.find(t => t.slug === tagFilter)?.name || tagFilter;
+    const tagTitle = document.createElement('h2');
+    tagTitle.textContent = tagName;
+    tagTitle.className = 'tag-title';
+    container.appendChild(tagTitle);
+  }
 
-  // Group by the first tag's slug
-  const groups = {};
-  data.forEach(dest => {
-    const tag = dest.tags?.[0];
-    if (!tag) return;
-    const key = tag.slug;
-    if (!groups[key]) groups[key] = { name: tag.name, items: [] };
-    groups[key].items.push(dest);
-  });
+  // Group by the first tag's slug (skip if we're already filtered by tag)
+  if (!tagFilter) {
+    const groups = {};
+    data.forEach(dest => {
+		
+      const tag = dest.tags?.[0];
+      if (!tag) return;
+      const key = tag.slug;
+      if (!groups[key]) groups[key] = { name: tag.name, items: [] };
+      groups[key].items.push(dest);
+    });
 
-  // Build each section
-  Object.values(groups).forEach(group => {
-    const sec = document.createElement('section');
-    sec.style.marginBottom = '1.5rem';
+    // Build each section
+    Object.values(groups).forEach(group => {
+      const sec = document.createElement('section');
+      sec.style.marginBottom = '1.5rem';
 
-    const h2 = document.createElement('h2');
-    h2.textContent = group.name;
-    h2.style.marginBottom = '0.5rem';
-    sec.appendChild(h2);
+      const h2 = document.createElement('h2');
+      h2.textContent = group.name;
+      h2.style.marginBottom = '0.5rem';
+      sec.appendChild(h2);
 
+      const ul = document.createElement('ul');
+      ul.style.listStyle = 'none';
+      ul.style.padding = '0';
+
+      group.items.forEach(dest => {
+        const li = document.createElement('li');
+        li.classList.add('poi-row');
+        li.dataset.id = dest.id;
+        li.innerHTML = `
+          <span class="poi-name">
+            ${dest.name} ${getCategoryIcons(dest.categories)}
+          </span>
+        `;
+        li.addEventListener('click', () => {
+          showDetail(dest);
+          listOverlay.style.display = 'none';
+          setActiveTab(tabList);
+        });
+        ul.appendChild(li);
+      });
+
+      sec.appendChild(ul);
+      container.appendChild(sec);
+    });
+  } else {
+    // Simple list when tag filtered
     const ul = document.createElement('ul');
     ul.style.listStyle = 'none';
     ul.style.padding = '0';
-
-    group.items.forEach(dest => {
+    
+    // Sort by trail distance if available
+    if (lastPos) {
+      data.sort((a, b) => 
+        (a._currentDistance || Infinity) - (b._currentDistance || Infinity)
+      );
+    }
+    
+    data.forEach(dest => {
       const li = document.createElement('li');
       li.classList.add('poi-row');
       li.dataset.id = dest.id;
+      
+      // Include distance if available
+      let distanceHtml = '';
+      if (typeof dest._currentDistance === 'number') {
+        distanceHtml = `<span class="poi-distance">${dest._currentDistance.toFixed(1)} mi</span>`;
+      }
+      
       li.innerHTML = `
         <span class="poi-name">
           ${dest.name} ${getCategoryIcons(dest.categories)}
         </span>
+        ${distanceHtml}
       `;
+      
       li.addEventListener('click', () => {
         showDetail(dest);
-        listOverlay.style.display = 'none';
-        setActiveTab(tabList);
       });
       ul.appendChild(li);
     });
-
-    sec.appendChild(ul);
-    container.appendChild(sec);
-  });
+    
+    container.appendChild(ul);
+  }
+// Add some CSS for the new elements if not already present
+  if (!document.getElementById('cluster-styles')) {
+    const style = document.createElement('style');
+    style.id = 'cluster-styles';
+    style.textContent = `
+      .back-button {
+        margin-bottom: 10px;
+        padding: 5px 15px;
+        background: #f0f0f0;
+        border: none;
+        border-radius: 4px;
+        cursor: pointer;
+      }
+      .back-button:hover {
+        background: #e0e0e0;
+      }
+      .tag-title {
+        margin-bottom: 15px;
+        padding-bottom: 5px;
+        border-bottom: 1px solid #eee;
+      }
+      .cluster-row {
+        background-color: #f8f8f8;
+      }
+      .cluster-row .fa-layer-group {
+        color: #0077CC;
+        margin-right: 5px;
+      }
+      .pagination {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 10px 5px;
+        border-top: 1px solid #eee;
+        margin-top: 10px;
+      }
+      .pagination button {
+        background: #f0f0f0;
+        border: none;
+        padding: 5px 10px;
+        border-radius: 4px;
+        cursor: pointer;
+      }
+      .pagination button:hover {
+        background: #e0e0e0;
+      }
+      .page-info {
+        font-size: 0.9rem;
+        color: #666;
+      }
+    `;
+    document.head.appendChild(style);
+  }
 }
 
 // Show detail view for a destination
