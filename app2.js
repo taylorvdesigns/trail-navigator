@@ -30,7 +30,7 @@ let changeEntryBtn, closeDetailBtn, entryClose;
 
 // Constants
 const DEFAULT_COORDS = [40.785091, -73.968285];
-const ROUTE_ID   = 50357921;
+const ROUTE_ID   = 50608713;
 const API_KEY    = '81c8a1eb';
 const AUTH_TOKEN = '5cc5e4b222670322422e8a3fb7324379';
 const ROUTE_URL  = `https://ridewithgps.com/api/v1/routes/${ROUTE_ID}.json?version=2`;
