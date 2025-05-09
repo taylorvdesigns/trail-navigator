@@ -937,6 +937,7 @@ function promptManualEntryPoint() {
 
 // ─── 5) VIEW UPDATE FUNCTIONS ──────────────────────────────────────────
 // Update the relevant part of the updateNavView function (around line 745):
+// Update the updateNavView function to use DOM manipulation
 function updateNavView() {
   if (!isReadyForNavUpdate()) {
     console.debug('Missing data: lastPos, poiData, or routeLine');
@@ -959,14 +960,176 @@ function updateNavView() {
     );
   }
 
-  // Snap user position to trail
+  // Calculate distances and sort data
+  const { ahead, behind } = processAndSortPOIs(data);
+
+  // Get clustered results
+  const aheadResult = clusterPOIs(ahead);
+  const behindResult = clusterPOIs(behind);
+
+  // Clear existing content
+  aheadList.innerHTML = '';
+  behindList.innerHTML = '';
+
+  // Render ahead items
+  if (aheadResult.length > 0) {
+    aheadResult.forEach(cluster => {
+      const groupDiv = document.createElement('div');
+      groupDiv.className = 'poi-group';
+      
+      const headerDiv = document.createElement('div');
+      headerDiv.className = 'poi-group-header';
+      headerDiv.innerHTML = `
+        <div class="group-title">
+          <i class="fas fa-layer-group"></i>
+          ${cluster.name} (${cluster.pois.length})
+        </div>
+        <div class="group-distance">
+          ${cluster.distance.toFixed(1)} mi
+        </div>
+      `;
+
+      // Create collapsible content
+      const contentDiv = document.createElement('div');
+      contentDiv.className = 'poi-group-content';
+      if (!expandedGroups.includes(cluster.name)) {
+        contentDiv.classList.add('hidden');
+      }
+
+      // Add items to the group
+      cluster.pois.forEach(poi => {
+        const itemDiv = document.createElement('div');
+        itemDiv.className = 'poi-row';
+        itemDiv.dataset.id = poi.id;
+
+        let distanceDisplay = poi._currentDistance?.toFixed(1) + ' mi';
+        if (poi._lateralDistance > 0.1) {
+          distanceDisplay += ` (${poi._lateralDistance.toFixed(1)} mi off trail)`;
+        }
+
+        itemDiv.innerHTML = `
+          <div class="poi-name">
+            ${poi.name} ${getCategoryIcons(poi.categories || [])}
+          </div>
+          <div class="poi-times">
+            <span class="poi-distance">${distanceDisplay}</span>
+            <span class="poi-time">${toMinutesStr(poi._currentDistance / MODE_SPEEDS[currentMode])}</span>
+          </div>
+        `;
+
+        itemDiv.addEventListener('click', (e) => {
+          e.stopPropagation();
+          showDetail(poi);
+        });
+
+        contentDiv.appendChild(itemDiv);
+      });
+
+      // Add click handler for group header
+      headerDiv.addEventListener('click', () => {
+        contentDiv.classList.toggle('hidden');
+        if (contentDiv.classList.contains('hidden')) {
+          expandedGroups = expandedGroups.filter(g => g !== cluster.name);
+        } else if (!expandedGroups.includes(cluster.name)) {
+          expandedGroups.push(cluster.name);
+        }
+        headerDiv.classList.toggle('expanded');
+      });
+
+      groupDiv.appendChild(headerDiv);
+      groupDiv.appendChild(contentDiv);
+      aheadList.appendChild(groupDiv);
+    });
+  } else {
+    const emptyDiv = document.createElement('div');
+    emptyDiv.className = 'poi-row';
+    emptyDiv.textContent = 'No destinations ahead';
+    aheadList.appendChild(emptyDiv);
+  }
+
+  // Render behind items (same pattern as ahead)
+  if (behindResult.length > 0) {
+    behindResult.forEach(cluster => {
+      const groupDiv = document.createElement('div');
+      groupDiv.className = 'poi-group';
+      
+      const headerDiv = document.createElement('div');
+      headerDiv.className = 'poi-group-header';
+      headerDiv.innerHTML = `
+        <div class="group-title">
+          <i class="fas fa-layer-group"></i>
+          ${cluster.name} (${cluster.pois.length})
+        </div>
+        <div class="group-distance">
+          ${cluster.distance.toFixed(1)} mi
+        </div>
+      `;
+
+      // Create collapsible content
+      const contentDiv = document.createElement('div');
+      contentDiv.className = 'poi-group-content';
+      if (!expandedGroups.includes(cluster.name)) {
+        contentDiv.classList.add('hidden');
+      }
+
+      // Add items to the group
+      cluster.pois.forEach(poi => {
+        const itemDiv = document.createElement('div');
+        itemDiv.className = 'poi-row';
+        itemDiv.dataset.id = poi.id;
+
+        let distanceDisplay = poi._currentDistance?.toFixed(1) + ' mi';
+        if (poi._lateralDistance > 0.1) {
+          distanceDisplay += ` (${poi._lateralDistance.toFixed(1)} mi off trail)`;
+        }
+
+        itemDiv.innerHTML = `
+          <div class="poi-name">
+            ${poi.name} ${getCategoryIcons(poi.categories || [])}
+          </div>
+          <div class="poi-times">
+            <span class="poi-distance">${distanceDisplay}</span>
+            <span class="poi-time">${toMinutesStr(poi._currentDistance / MODE_SPEEDS[currentMode])}</span>
+          </div>
+        `;
+
+        itemDiv.addEventListener('click', (e) => {
+          e.stopPropagation();
+          showDetail(poi);
+        });
+
+        contentDiv.appendChild(itemDiv);
+      });
+
+      // Add click handler for group header
+      headerDiv.addEventListener('click', () => {
+        contentDiv.classList.toggle('hidden');
+        if (contentDiv.classList.contains('hidden')) {
+          expandedGroups = expandedGroups.filter(g => g !== cluster.name);
+        } else if (!expandedGroups.includes(cluster.name)) {
+          expandedGroups.push(cluster.name);
+        }
+        headerDiv.classList.toggle('expanded');
+      });
+
+      groupDiv.appendChild(headerDiv);
+      groupDiv.appendChild(contentDiv);
+      behindList.appendChild(groupDiv);
+    });
+  } else {
+    const emptyDiv = document.createElement('div');
+    emptyDiv.className = 'poi-row';
+    emptyDiv.textContent = 'No destinations behind';
+    behindList.appendChild(emptyDiv);
+  }
+}
+
+// Helper function to process and sort POIs
+function processAndSortPOIs(data) {
+  // Calculate trail position
   const userPt = turf.point([lastPos[1], lastPos[0]]);
   const snappedU = turf.nearestPointOnLine(routeLine, userPt, { units: 'miles' });
   const userDistance = snappedU.properties.location;
-  const totalTrailLength = turf.length(routeLine, { units: 'miles' });
-
-  console.log('Trail length:', totalTrailLength.toFixed(2), 'miles');
-  console.log('User position:', userDistance.toFixed(2), 'miles from start');
 
   // Process POIs with distance calculations
   data.forEach(dest => {
@@ -987,7 +1150,6 @@ function updateNavView() {
       dest._alongTrailDistance = alongTrailDist;
       dest._actualPosition = poiDistance;
 
-      console.log(`POI: ${dest.name}, Distance: ${dest._currentDistance.toFixed(2)} mi`);
     } catch (error) {
       console.error(`Error calculating distance for ${dest.name}:`, error);
       dest._currentDistance = Infinity;
@@ -1029,77 +1191,8 @@ function updateNavView() {
   ahead.sort((a, b) => a._currentDistance - b._currentDistance);
   behind.sort((a, b) => a._currentDistance - b._currentDistance);
 
-  console.log('Ahead POIs:', ahead);
-  console.log('Behind POIs:', behind);
-
-  // Get clustered results
-  const aheadResult = clusterPOIs(ahead);
-  const behindResult = clusterPOIs(behind);
-
-  console.log('Ahead clusters:', aheadResult);
-  console.log('Behind clusters:', behindResult);
-
-  // Generate HTML for ahead section
-  let aheadHtml = '';
-  if (aheadResult.length > 0) {
-    aheadResult.forEach(cluster => {
-      aheadHtml += `
-        <div class="poi-row">
-          <span class="poi-name">${cluster.name} (${cluster.pois.length} POIs)</span>
-          <span class="poi-distance">${cluster.distance.toFixed(2)} mi</span>
-        </div>
-      `;
-    });
-  } else {
-    aheadHtml = '<div class="poi-row">No destinations ahead</div>';
-  }
-
-  // Generate HTML for behind section
-  let behindHtml = '';
-  if (behindResult.length > 0) {
-    behindResult.forEach(cluster => {
-      behindHtml += `
-        <div class="poi-row">
-          <span class="poi-name">${cluster.name} (${cluster.pois.length} POIs)</span>
-          <span class="poi-distance">${cluster.distance.toFixed(2)} mi</span>
-        </div>
-      `;
-    });
-  } else {
-    behindHtml = '<div class="poi-row">No destinations behind</div>';
-  }
-
-  // Update the DOM
-  aheadList.innerHTML = aheadHtml;
-  behindList.innerHTML = behindHtml;
+  return { ahead, behind };
 }
-
-  // Add click handlers for groups to switch to filtered list view
-  document.querySelectorAll('.poi-row[data-group]').forEach(row => {
-    row.addEventListener('click', () => {
-      const groupSlug = row.getAttribute('data-group');
-      if (!groupSlug) return; // Skip if no group slug
-      
-      // Switch to list view with the filter active
-      setActiveTab(tabList);
-      activeFilter = groupSlug;
-      refreshFilterUI();
-      renderListView(groupSlug);
-    });
-  });
-
-  // Add click handlers for individual POIs
-  document.querySelectorAll('.poi-row[data-id]').forEach(row => {
-    row.addEventListener('click', () => {
-      const id = +row.dataset.id;
-      if (!id) return; // Skip if no valid ID
-      
-      const dest = poiData.find(d => d && d.id === id);
-      if (dest) {
-        showDetail(dest);
-      }
-    });
-  });
 
 
 // Modify renderListView to accept a tag filter
