@@ -14,6 +14,7 @@ let entryPoints    = [];
 let activeFilter   = null;
 let currentAhead   = [];
 let currentBehind  = [];
+let urlFilter = null;
 let userTrailDirection = null; // 1 = towards end, -1 = towards start
 let prevTrailPosition = null;  // Previous position fraction along trail
 let directionOverrideActive = false;
@@ -53,6 +54,39 @@ function isReadyForNavUpdate() {
     return false;
   }
   return true;
+}
+
+// Add this function to handle URL parameters
+function handleUrlParams() {
+  const urlParams = new URLSearchParams(window.location.search);
+  const groupFilter = urlParams.get('group');
+  if (groupFilter) {
+    urlFilter = decodeURIComponent(groupFilter).toLowerCase();
+    // Switch to list view and apply filter
+    showListViewWithFilter(urlFilter);
+  }
+}
+
+// Add function to update URL when filtering
+function updateUrlWithFilter(filter) {
+  const url = new URL(window.location);
+  if (filter) {
+    url.searchParams.set('group', encodeURIComponent(filter));
+  } else {
+    url.searchParams.delete('group');
+  }
+  window.history.pushState({}, '', url);
+}
+
+// Function to show list view with specific filter
+function showListViewWithFilter(groupName) {
+  // Switch to list view
+  listOverlay.style.display = 'flex';
+  navOverlay.style.display = 'none';
+  setActiveTab(tabList);
+  
+  // Apply the filter
+  renderListView(groupName);
 }
 
 
@@ -127,7 +161,14 @@ function isMapReady() {
 }
 
 function toMinutesStr(hours) {
-  return Math.round(hours * 60) + ' min';
+  const minutes = Math.round(hours * 60);
+  if (minutes < 60) {
+    return `${minutes} min`;
+  } else {
+    const hrs = Math.floor(minutes / 60);
+    const mins = minutes % 60;
+    return mins > 0 ? `${hrs}h ${mins}m` : `${hrs}h`;
+  }
 }
 
 // Bearing calculations
@@ -164,6 +205,90 @@ function haversineDistance([lat1, lon1], [lat2, lon2]) {
   return 2 * R * Math.asin(Math.sqrt(a));
 }
 
+// New helper function to handle POI rendering
+function renderPOIs(pois, container, isAhead) {
+  // Safety check
+  if (!container) {
+    console.warn('No container provided for POI rendering');
+    return;
+  }
+
+  // Handle empty state
+  if (!pois || pois.length === 0) {
+    const emptyDiv = document.createElement('div');
+    emptyDiv.className = 'poi-row';
+    emptyDiv.textContent = `No destinations ${isAhead ? 'ahead' : 'behind'}`;
+    container.appendChild(emptyDiv);
+    return;
+  }
+
+  // Two different rendering modes based on whether a filter is active
+  if (activeFilter) {
+    // Flat list mode - show all POIs directly
+    pois.forEach(poi => renderSinglePOI(poi, container));
+  } else {
+    // Grouped mode - organize by clusters
+    renderGroupedPOIs(pois, container);
+  }
+}
+
+// Helper function to render a single POI
+function renderSinglePOI(poi, container) {
+  const itemDiv = document.createElement('div');
+  itemDiv.className = 'poi-row';
+  itemDiv.dataset.id = poi.id;
+
+  let distanceDisplay = poi._currentDistance?.toFixed(1) + ' mi';
+  if (poi._lateralDistance > 0.1) {
+    distanceDisplay += ` (${poi._lateralDistance.toFixed(1)} mi off trail)`;
+  }
+
+  itemDiv.innerHTML = `
+    <div class="poi-name">
+      ${poi.name} ${getCategoryIcons(poi.categories || [])}
+    </div>
+    <div class="poi-times">
+      <span class="poi-distance">${distanceDisplay}</span>
+      <span class="poi-time ${currentMode}">
+        ${toMinutesStr(poi._currentDistance / MODE_SPEEDS[currentMode])}
+      </span>
+    </div>
+  `;
+
+  itemDiv.addEventListener('click', () => showDetail(poi));
+  container.appendChild(itemDiv);
+}
+
+// Helper function to render grouped POIs
+function renderGroupedPOIs(pois, container) {
+  const grouped = clusterPOIs(pois);
+  
+  grouped.forEach(cluster => {
+    const groupDiv = document.createElement('div');
+    groupDiv.className = 'poi-group';
+    
+    const headerDiv = document.createElement('div');
+    headerDiv.className = 'poi-group-header';
+    headerDiv.innerHTML = `
+      <div class="group-title">
+        <i class="fas fa-layer-group"></i>
+        ${cluster.name} (${cluster.pois.length})
+      </div>
+      <div class="group-distance">
+        ${cluster.distance.toFixed(1)} mi
+      </div>
+    `;
+
+    // Add click handler to switch to list view with this group's POIs
+    headerDiv.addEventListener('click', () => {
+      showListViewWithFilter(cluster.name);
+      updateUrlWithFilter(cluster.name);
+    });
+
+    groupDiv.appendChild(headerDiv);
+    container.appendChild(groupDiv);
+  });
+}
 
 // Helper to render category icons
 function getCategoryIcons(categories = []) {
@@ -1092,13 +1217,13 @@ function updateNavView() {
   // Calculate distances and sort data
   const { ahead, behind } = processAndSortPOIs(data);
 
-  // Get clustered results
-  const aheadResult = clusterPOIs(ahead);
-  const behindResult = clusterPOIs(behind);
-
   // Clear existing content
   aheadList.innerHTML = '';
   behindList.innerHTML = '';
+
+  // Use our new renderPOIs function for both sections
+  renderPOIs(ahead, aheadList, true);
+  renderPOIs(behind, behindList, false);
 
   // Render ahead items
   if (aheadResult.length > 0) {
@@ -1212,15 +1337,17 @@ function updateNavView() {
           distanceDisplay += ` (${poi._lateralDistance.toFixed(1)} mi off trail)`;
         }
 
-        itemDiv.innerHTML = `
-          <div class="poi-name">
-            ${poi.name} ${getCategoryIcons(poi.categories || [])}
-          </div>
-          <div class="poi-times">
-            <span class="poi-distance">${distanceDisplay}</span>
-            <span class="poi-time">${toMinutesStr(poi._currentDistance / MODE_SPEEDS[currentMode])}</span>
-          </div>
-        `;
+	itemDiv.innerHTML = `
+	  <div class="poi-name">
+	    ${poi.name} ${getCategoryIcons(poi.categories || [])}
+	  </div>
+	  <div class="poi-times">
+	    <span class="poi-distance">${distanceDisplay}</span>
+	    <span class="poi-time ${currentMode}">
+	      ${toMinutesStr(poi._currentDistance / MODE_SPEEDS[currentMode])}
+	    </span>
+	  </div>
+	`;
 
         itemDiv.addEventListener('click', (e) => {
           e.stopPropagation();
@@ -1721,6 +1848,8 @@ function initializeAppUI() {
   const navFilterContainer = document.querySelector('.filter-buttons');
   const listFilterContainer = document.querySelector('.list-filters');
   
+  
+  
 // Create container for entry message if it doesn't exist
   const entryContainer = document.getElementById('entry-container');
   if (!entryContainer) {
@@ -1739,16 +1868,22 @@ function initializeAppUI() {
   
   // Initialize mode buttons
   const modeButtons = document.querySelectorAll('.mode-btn');
-  modeButtons.forEach(btn => {
-    btn.classList.toggle('active', btn.dataset.mode === currentMode);
-    btn.addEventListener('click', () => {
-      const m = btn.dataset.mode;
-      if (currentMode === m) return;
-      currentMode = m;
-      modeButtons.forEach(b => b.classList.toggle('active', b.dataset.mode === currentMode));
-      updateNavView();
+    modeButtons.forEach(btn => {
+      btn.classList.toggle('active', btn.dataset.mode === currentMode);
+      btn.addEventListener('click', () => {
+        const newMode = btn.dataset.mode;
+        if (currentMode === newMode) return;
+      
+        // Update mode and button states
+        currentMode = newMode;
+        modeButtons.forEach(b => 
+          b.classList.toggle('active', b.dataset.mode === currentMode)
+        );
+      
+        // Update all displayed times
+        updateNavView();
+      });
     });
-  });
   
   // Set up event listeners for navigation rows
   aheadList.addEventListener('click', handleNavRowClick);
