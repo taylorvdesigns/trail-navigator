@@ -21,13 +21,13 @@ let trailEndpoints = { start: "Travelers Rest", end: "Conestee Park" };
 let maxNavItems = 5; // Maximum items to show in ahead/behind lists
 let expandedGroups = []; // Track which groups are expanded
 let currentPage = 0; // For paging through filtered results
-
-// Elements that will be accessed globally
 let navOverlay, listOverlay, detailOverlay, entryOverlay;
 let tabMap, tabNav, tabList;
 let aheadList, behindList, entryList;
 let detailTitle, detailImg, detailDesc, detailDistance;
 let changeEntryBtn, closeDetailBtn, entryClose;
+let initializationInProgress = true;
+
 
 // Add at the top of your file with other global variables
 const appState = {
@@ -45,7 +45,11 @@ function isReadyForNavUpdate() {
   if (!routeLine) missing.push('routeLine');
   
   if (missing.length > 0) {
-    console.debug('Not ready for nav update. Missing:', missing.join(', '));
+    if (initializationInProgress) {
+      console.debug('Initializing, waiting for:', missing.join(', '));
+    } else {
+      console.debug('Not ready for nav update. Missing:', missing.join(', '));
+    }
     return false;
   }
   return true;
@@ -53,6 +57,7 @@ function isReadyForNavUpdate() {
 
 
 // Constants
+const MAX_TRAIL_DISTANCE = 0.1; // sets how far off the trail to dectect whether the user is on or off the trail
 const DEFAULT_COORDS = [40.785091, -73.968285];
 const ROUTE_ID   = 50608713;
 const API_KEY    = '81c8a1eb';
@@ -859,25 +864,102 @@ function setupGeolocationWithErrorHandling() {
     return;
   }
 
-  // Create a location button if it doesn't exist
-  if (!document.querySelector('.location-button')) {
-    const locationBtn = document.createElement('button');
-    locationBtn.className = 'location-button';
-    locationBtn.innerHTML = '<i class="fas fa-location-arrow"></i> Enable Location';
-    locationBtn.addEventListener('click', () => {
-      navigator.geolocation.watchPosition(
-        handlePositionUpdate,
-        handlePositionError,
-        { enableHighAccuracy: true, timeout: 10000, maximumAge: 30000 }
-      );
-      locationBtn.style.display = 'none';
-    });
+  // Remove any existing prompt first
+  const existingPrompt = document.getElementById('location-prompt');
+  if (existingPrompt) {
+    existingPrompt.remove();
+  }
 
-    // Add button to the map container
-    const mapContainer = document.getElementById('map');
-    if (mapContainer) {
-      mapContainer.appendChild(locationBtn);
+  // Create location prompt overlay
+  const locationPrompt = document.createElement('div');
+  locationPrompt.id = 'location-prompt';
+  locationPrompt.innerHTML = `
+    <div class="location-prompt-content">
+      <h3>Location Access</h3>
+      <p>To help you navigate the trail, we need your location. You can:</p>
+      <div class="location-buttons">
+        <button id="enable-location" class="primary-button">
+          <i class="fas fa-location-arrow"></i> Enable Location
+        </button>
+        <button id="use-manual-entry" class="secondary-button">
+          <i class="fas fa-map-marker-alt"></i> Choose Entry Point
+        </button>
+      </div>
+    </div>
+  `;
+
+  document.body.appendChild(locationPrompt);
+
+  // Wait for DOM to ensure buttons exist
+  setTimeout(() => {
+    const enableLocationBtn = document.getElementById('enable-location');
+    const useManualEntryBtn = document.getElementById('use-manual-entry');
+
+    if (enableLocationBtn) {
+      enableLocationBtn.onclick = () => {
+        console.log('Enable location clicked');
+        locationPrompt.remove();
+        requestLocation();
+      };
     }
+
+    if (useManualEntryBtn) {
+      useManualEntryBtn.onclick = () => {
+        console.log('Manual entry clicked');
+        locationPrompt.remove();
+        promptManualEntryPoint();
+      };
+    }
+  }, 0);
+}
+
+function requestLocation() {
+  console.log('Requesting location...');
+  
+  // Show loading state
+  const loadingDiv = document.createElement('div');
+  loadingDiv.id = 'location-loading';
+  loadingDiv.innerHTML = `
+    <div class="loading-spinner"></div>
+    <p>Getting your location...</p>
+  `;
+  document.body.appendChild(loadingDiv);
+
+  // Try to get location with a timeout
+  const timeoutId = setTimeout(() => {
+    console.log('Location request timed out');
+    document.getElementById('location-loading')?.remove();
+    promptManualEntryPoint();
+  }, 10000); // 10 second timeout
+
+  try {
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        console.log('Got position:', position);
+        clearTimeout(timeoutId);
+        document.getElementById('location-loading')?.remove();
+        handlePositionUpdate(position);
+        
+        // Start watching position after getting initial position
+        navigator.geolocation.watchPosition(
+          handlePositionUpdate,
+          handlePositionError,
+          { enableHighAccuracy: true, timeout: 10000, maximumAge: 30000 }
+        );
+      },
+      (error) => {
+        console.log('Position error:', error);
+        clearTimeout(timeoutId);
+        document.getElementById('location-loading')?.remove();
+        handlePositionError(error);
+      },
+      { enableHighAccuracy: true, timeout: 10000 }
+    );
+  } catch (e) {
+    console.error('Error requesting location:', e);
+    clearTimeout(timeoutId);
+    document.getElementById('location-loading')?.remove();
+    promptManualEntryPoint();
   }
 }
 
@@ -903,8 +985,25 @@ function handlePositionUpdate(pos) {
     }
     lastPos = coords;
 
-    // Only try to update nav view if route is loaded
+    // Check if user is on trail
     if (routeLine) {
+      const userPt = turf.point([coords[1], coords[0]]);
+      const snapped = turf.nearestPointOnLine(routeLine, userPt, { units: 'miles' });
+      
+      // Calculate distance from trail
+      const distanceFromTrail = turf.distance(
+        userPt,
+        turf.point(snapped.geometry.coordinates),
+        { units: 'miles' }
+      );
+
+      console.debug('Distance from trail:', distanceFromTrail.toFixed(3), 'miles');
+
+      // If not on trail and haven't shown entry dialog yet
+      if (distanceFromTrail > MAX_TRAIL_DISTANCE && !hasManualEntry) {
+        promptManualEntryPoint();
+      }
+
       updateNavView();
     }
 
@@ -918,6 +1017,7 @@ function handlePositionUpdate(pos) {
   }
 }
 
+
 function handlePositionError(err) {
   console.warn("Geolocation error:", err);
   if (window.appErrorHandler) {
@@ -930,6 +1030,35 @@ function handlePositionError(err) {
 }
 
 function promptManualEntryPoint() {
+  console.log('Showing manual entry prompt');
+  
+  // Ensure entry overlay exists
+  const entryOverlay = document.getElementById('entry-overlay');
+  if (!entryOverlay) {
+    console.error('Entry overlay not found');
+    return;
+  }
+
+  // Add message to entry overlay explaining why we're showing it
+  const messageDiv = document.createElement('div');
+  messageDiv.className = 'entry-message';
+  messageDiv.innerHTML = `
+    <p>Please select an entry point on the trail:</p>
+  `;
+
+  // Clear any existing messages
+  const existingMessage = entryOverlay.querySelector('.entry-message');
+  if (existingMessage) {
+    existingMessage.remove();
+  }
+
+  // Add message before the entry list
+  const entryList = document.getElementById('entry-list');
+  if (entryList && entryList.parentNode) {
+    entryList.parentNode.insertBefore(messageDiv, entryList);
+  }
+
+  // Render entry points and show overlay
   renderEntryList();
   entryOverlay.style.display = 'block';
   hasManualEntry = true; // Prevent future popups
@@ -1592,6 +1721,14 @@ function initializeAppUI() {
   const navFilterContainer = document.querySelector('.filter-buttons');
   const listFilterContainer = document.querySelector('.list-filters');
   
+// Create container for entry message if it doesn't exist
+  const entryContainer = document.getElementById('entry-container');
+  if (!entryContainer) {
+    const container = document.createElement('div');
+    container.id = 'entry-container';
+    entryList.parentNode.insertBefore(container, entryList);
+  }
+  
   // Set up filter buttons
   makeFilterButtons(navFilterContainer);
   makeFilterButtons(listFilterContainer);
@@ -1685,6 +1822,8 @@ function initializeAppUI() {
 
 	// Main initialization function
 	function initApp() {
+	  initializationInProgress = true;
+
 	  // Initialize UI components first
 	  initializeAppUI();
   
@@ -1709,8 +1848,15 @@ function initializeAppUI() {
 	    Promise.all([
 	      tryLoadRouteData(),
 	      tryLoadPoiData()
-	    ]).catch(error => {
+	    ]).then(() => {
+	      initializationInProgress = false;
+	      // Show location prompt after data is loaded
+	      if (!lastPos && !hasManualEntry) {
+	        setupGeolocationWithErrorHandling();
+	      }
+	    }).catch(error => {
 	      console.error('Failed to load initial data:', error);
+	      initializationInProgress = false;
 	      if (window.appErrorHandler) {
 	        window.appErrorHandler.handleError('DATA', 'initial-load-failed', {
 	          message: error.message
@@ -1720,6 +1866,7 @@ function initializeAppUI() {
     
 	  } catch (error) {
 	    console.error('Failed to initialize map:', error);
+	    initializationInProgress = false;
 	    if (window.appErrorHandler) {
 	      window.appErrorHandler.handleError('MAP', 'initialization-failed', {
 	        message: error.message

@@ -61,12 +61,18 @@
 </div>
   
 <!-- Entry Overlay -->
-<div id="entry-overlay">
-  <div class="entry-modal">
-    <button id="entry-close" class="modal-close" aria-label="Close">×</button>
-    <h2>You’re off the trail!</h2>
-    <p>Pick a point to start from:</p>
-    <div id="entry-list"></div>
+<div id="entry-overlay" class="overlay">
+  <header>
+    <h2>Choose Entry Point</h2>
+    <button id="entry-close">&times;</button>
+  </header>
+  <div class="entry-content">
+    <div id="entry-container">
+      <!-- Entry message will be inserted here -->
+    </div>
+    <div id="entry-list">
+      <!-- Entry points will be inserted here -->
+    </div>
   </div>
 </div>
 
