@@ -778,48 +778,7 @@ function tryLoadPoiData() {
     });
 }
 
-function processPoiData(places) {
-  try {
-    // Map each WP place into our poiData
-    poiData = places.map(p => ({
-      id: p.id,
-      name: p.title.rendered,
-      coords: [+p.latitude, +p.longitude],
-      description: p.content.raw,
-      image: p.featured_image?.[0]?.source_url || '',
-      tags: (p.post_tags || []).map(t => ({ slug: t.slug, name: t.name })),
-      categories: (p.post_category || []).map(c => ({
-        id: c.id,
-        name: c.name,
-        slug: c.slug.replace(/^\d+-/, '')
-      })).filter(cat => cat.slug !== 'business')
-    }));
 
-    // Draw them on the map
-    places.forEach(p => {
-      const lat = parseFloat(p.latitude),
-        lng = parseFloat(p.longitude);
-      if (isNaN(lat) || isNaN(lng)) return;
-      
-      try {
-        L.marker([lat, lng])
-          .addTo(map)
-          .bindPopup(`<strong>${p.title.rendered}</strong>`);
-      } catch (e) {
-        console.warn(`Failed to add marker for ${p.title.rendered}`, e);
-      }
-    });
-
-    // Update views
-    updateNavView();
-    renderListView();
-  } catch (err) {
-    console.error('Error processing POI data:', err);
-    window.appErrorHandler.handleError(ErrorTypes.DATA, 'processing-failed', {
-      message: err.message
-    });
-  }
-}
 
 function retryPoiLoad() {
   tryLoadPoiData();
@@ -1007,9 +966,29 @@ function initErrorHandling() {
 }
 
 // Start the error handling system
+// Keep this in app-claude.js only
 document.addEventListener('DOMContentLoaded', () => {
-  initErrorHandling();
+  // Only initialize error handling if not already done
+  if (!window.appErrorHandler) {
+    initErrorHandling();
+  }
+  
+  // Initialize the app only after map is ready
+  const checkMapAndInit = () => {
+    if (typeof L !== 'undefined') {
+      if (typeof window.initApp === 'function') {
+        window.initApp();
+      }
+    } else {
+      setTimeout(checkMapAndInit, 100);
+    }
+  };
+  
+  checkMapAndInit();
 });
+
+
+
 
 // ─── 9) USAGE EXAMPLES ──────────────────────────────────────────────────────────
 /*

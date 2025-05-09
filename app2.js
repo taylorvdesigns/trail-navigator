@@ -212,7 +212,6 @@ function renderNavItems(container, items, isAhead) {
   // Clear existing content
   container.innerHTML = '';
 
-  // Move clearExistingListeners inside here where it has access to container
   function clearExistingListeners() {
     const rows = container.querySelectorAll('.poi-row[data-id]');
     rows.forEach(row => {
@@ -258,7 +257,10 @@ function renderNavItems(container, items, isAhead) {
 
     // Create collapsible content
     const contentDiv = document.createElement('div');
-    contentDiv.className = 'poi-group-content hidden';
+    contentDiv.className = 'poi-group-content';
+    if (!expandedGroups.includes(category)) {
+      contentDiv.classList.add('hidden');
+    }
     
     // Add items to the group
     groupItems.forEach(item => {
@@ -281,12 +283,24 @@ function renderNavItems(container, items, isAhead) {
           <span class="poi-time">${toMinutesStr(item._currentDistance / MODE_SPEEDS[currentMode])}</span>
         </div>
       `;
+
+      itemDiv.addEventListener('click', (e) => {
+        e.stopPropagation(); // Prevent group toggle
+        const dest = poiData.find(d => d.id === item.id);
+        if (dest) showDetail(dest);
+      });
+
       contentDiv.appendChild(itemDiv);
     });
 
     // Add click handler for group header
     headerDiv.addEventListener('click', () => {
       contentDiv.classList.toggle('hidden');
+      if (contentDiv.classList.contains('hidden')) {
+        expandedGroups = expandedGroups.filter(g => g !== category);
+      } else if (!expandedGroups.includes(category)) {
+        expandedGroups.push(category);
+      }
       headerDiv.classList.toggle('expanded');
     });
 
@@ -294,35 +308,59 @@ function renderNavItems(container, items, isAhead) {
     groupDiv.appendChild(contentDiv);
     container.appendChild(groupDiv);
   });
-
-  // Add event listeners for POI clicks
-  container.querySelectorAll('.poi-row[data-id]').forEach(row => {
-    row.addEventListener('click', () => {
-      const id = +row.dataset.id;
-      const dest = poiData.find(d => d.id === id);
-      if (dest) showDetail(dest);
-    });
-  });
 }
 
-  // Add event listeners
-  function clearExistingListeners(container) {
-    const rows = container.querySelectorAll('.poi-row[data-id]');
-    rows.forEach(row => {
-      const clone = row.cloneNode(true);
-      row.parentNode.replaceChild(clone, row);
-    });
+// Add this CSS to ensure proper styling
+const style = document.createElement('style');
+style.textContent = `
+  .poi-group {
+    margin-bottom: 8px;
   }
-
-  // Then in the renderNavItems function, before adding new listeners:
-  clearExistingListeners(container);
-
-  // Same for cluster rows:
-  const clusterRows = container.querySelectorAll('.cluster-row');
-  clusterRows.forEach(row => {
-    const clone = row.cloneNode(true);
-    row.parentNode.replaceChild(clone, row);
-  });
+  .poi-group-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 8px;
+    background-color: #f5f5f5;
+    cursor: pointer;
+    border-radius: 4px;
+  }
+  .poi-group-header.expanded {
+    border-bottom-left-radius: 0;
+    border-bottom-right-radius: 0;
+  }
+  .poi-group-content {
+    background-color: white;
+    border: 1px solid #f0f0f0;
+    border-top: none;
+  }
+  .poi-group-content.hidden {
+    display: none;
+  }
+  .poi-group-header:hover {
+    background-color: #eeeeee;
+  }
+  .group-title {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .group-title i {
+    color: #666;
+  }
+  .poi-row {
+    padding: 8px;
+    border-bottom: 1px solid #f0f0f0;
+    cursor: pointer;
+  }
+  .poi-row:hover {
+    background-color: #f8f8f8;
+  }
+  .poi-row:last-child {
+    border-bottom: none;
+  }
+`;
+document.head.appendChild(style);
 
 
 // Function to handle cluster clicks
@@ -750,6 +788,64 @@ function tryLoadPoiData() {
         });
       }
     });
+}
+
+// Add this function to app2.js right after tryLoadPoiData
+function processPoiData(places) {
+  try {
+    // Map each WP place into our poiData
+    poiData = places.map(p => ({
+      id: p.id,
+      name: p.title.rendered,
+      coords: [+p.latitude, +p.longitude],
+      description: p.content.raw,
+      image: p.featured_image?.[0]?.source_url || '',
+      tags: (p.post_tags || []).map(t => ({ slug: t.slug, name: t.name })),
+      categories: (p.post_category || [])
+        .map(c => ({
+          id: c.id,
+          name: c.name,
+          slug: c.slug.replace(/^\d+-/, '')
+        }))
+        .filter(cat => cat.slug !== 'business')
+    }));
+
+    // Add markers to map only if it's initialized
+    if (window.map && window.map instanceof L.Map) {
+      places.forEach(p => {
+        try {
+          const lat = parseFloat(p.latitude);
+          const lng = parseFloat(p.longitude);
+          
+          if (isNaN(lat) || isNaN(lng)) {
+            console.warn(`Invalid coordinates for POI: ${p.title.rendered}`);
+            return;
+          }
+          
+          L.marker([lat, lng])
+            .addTo(window.map)
+            .bindPopup(`<strong>${p.title.rendered}</strong>`);
+        } catch (e) {
+          console.warn(`Failed to add marker for ${p.title.rendered}:`, e);
+        }
+      });
+    }
+
+    appState.poiLoaded = true;
+    
+    // Only update views if we have all required data
+    if (isReadyForNavUpdate()) {
+      updateNavView();
+    }
+
+  } catch (err) {
+    console.error('Error processing POI data:', err);
+    if (window.appErrorHandler) {
+      window.appErrorHandler.handleError('DATA', 'processing-failed', {
+        message: err.message
+      });
+    }
+  }
 }
 
 // ─── 4) GEOLOCATION FUNCTIONS ─────────────────────────────────────────
@@ -1211,7 +1307,7 @@ function showDetail(dest) {
 
 // Render entry point list
 function renderEntryList() {
-  if (!entryList || !routeLatLngs.length) return;
+  if (!entryList || !routeLatLngs.length || !window.map) return;
   
   entryList.innerHTML = '';
   const startPt = { name: "Trail Start", coords: routeLatLngs[0] };
@@ -1227,21 +1323,39 @@ function renderEntryList() {
     btn.addEventListener('click', () => {
       lastPos = [...pt.coords];
       userBearing = null;
-      hasManualEntry = true; // Prevent future pop-ups
+      hasManualEntry = true;
       entryOverlay.style.display = 'none';
       navOverlay.style.display = 'flex';
       setActiveTab(tabNav);
-      updateNavView();
       
-      // Create a marker at the selected entry point if none exists
-      if (!userMarker) {
-        userMarker = L.marker(lastPos).addTo(map).bindPopup('You are here').openPopup();
-      } else {
-        userMarker.setLatLng(lastPos);
+      // Create or update user marker
+      try {
+        if (!window.map) {
+          console.warn('Map not initialized');
+          return;
+        }
+        
+        if (!userMarker) {
+          userMarker = L.marker(lastPos)
+            .addTo(window.map)
+            .bindPopup('You are here');
+        } else {
+          userMarker.setLatLng(lastPos);
+        }
+        
+        // Center map on selected entry point
+        window.map.setView(lastPos, 15);
+        
+        // Update the navigation view
+        updateNavView();
+      } catch (error) {
+        console.error('Error updating user position:', error);
+        if (window.appErrorHandler) {
+          window.appErrorHandler.handleError('MAP', 'marker-update-failed', {
+            message: error.message
+          });
+        }
       }
-      
-      // Center map on selected entry point
-      map.setView(lastPos, 15);
     });
   });
 }
@@ -1521,7 +1635,7 @@ function initializeAppUI() {
 	  }
 	}
 	
-
+/*
 
 	// Start the app when DOM is loaded, but after error handling is initialized
 	document.addEventListener('DOMContentLoaded', () => {
@@ -1534,3 +1648,4 @@ function initializeAppUI() {
 	  setTimeout(initApp, 100);
 	});
 	
+*/
