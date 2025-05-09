@@ -339,23 +339,24 @@ function showClusterDetail(tag) {
 
 // ─── 2) UI FUNCTIONS ─────────────────────────────────────────────────
 // Create filter buttons
-function makeFilterButtons(container) {
-  container.innerHTML = '';
+function makeFilterButtons(targetContainer) {  // Rename parameter to avoid conflicts
+  if (!targetContainer) {
+    console.warn('No container provided for filter buttons');
+    return;
+  }
+
+  targetContainer.innerHTML = '';
   filterDefs.forEach(f => {
     const btn = document.createElement('button');
-    btn.innerHTML    = `<i class="${f.iconClass}"></i>`;
-    btn.title        = f.title;
+    btn.innerHTML = `<i class="${f.iconClass}"></i>`;
+    btn.title = f.title;
     btn.dataset.slug = f.slug;
     if (f.slug === activeFilter) btn.classList.add('active');
-    container.appendChild(btn);
+    targetContainer.appendChild(btn);
 
     btn.addEventListener('click', () => {
       const slug = btn.dataset.slug;
-      
-      // toggle off if same, otherwise set
       activeFilter = (activeFilter === slug ? null : slug);
-
-      // refresh the button states and both views
       refreshFilterUI();
       updateNavView();
       renderListView();
@@ -649,28 +650,20 @@ function tryLoadRouteData() {
 // Process loaded route data
 function processRouteData(data) {
   try {
-    if (!data?.route?.track_points || !Array.isArray(data.route.track_points)) {
-      throw new Error('Invalid route data: missing or invalid track points');
+    if (!window.map) {
+      throw new Error('Map not initialized');
     }
 
+    // Draw polyline
     const pts = data.route.track_points;
-    if (pts.length < 2) {
-      throw new Error('Invalid route data: need at least 2 points to draw a route');
+    routeLatLngs = pts.map(p => [p.y, p.x]);
+    
+    if (routeLine && window.map) {
+      window.map.removeLayer(routeLine);
     }
-
-    routeLatLngs = pts.map(p => {
-      if (!p?.x || !p?.y) {
-        throw new Error('Invalid track point: missing coordinates');
-      }
-      return [p.y, p.x];
-    });
-
-    if (window.routeLine) {
-      map.removeLayer(window.routeLine);
-    }
-
-    const polyline = L.polyline(routeLatLngs, { weight: 4, color: '#0077CC' }).addTo(map);
-    map.fitBounds(routeLatLngs);
+    
+    routeLine = L.polyline(routeLatLngs, { weight: 4, color: '#0077CC' }).addTo(window.map);
+    window.map.fitBounds(routeLatLngs);
 
     // Build turf lineString ([lng,lat])
     routeLine = turf.lineString(routeLatLngs.map(([lat, lng]) => [lng, lat]));
@@ -680,30 +673,15 @@ function processRouteData(data) {
     document.getElementById('trail-header').textContent = tn;
     const navName = document.getElementById('nav-trail-name');
     if (navName) navName.textContent = tn;
-
-    // Update endpoints
-    trailEndpoints.start = data.route.start_name || "Travelers Rest";
-    trailEndpoints.end = data.route.end_name || "Conestee Park";
-
-    appState.routeLoaded = true;
-
-    // Update direction controls if they exist
-    if (document.getElementById('direction-start')) {
-      updateDirectionButtons();
-    }
     
-    // Only update nav view if we have all required data
-    if (isReadyForNavUpdate()) {
+    // Update views if we have position data
+    if (lastPos) {
       updateNavView();
     }
-    
-    // Initialize entry points now that we have the route
-    renderEntryList();
-
   } catch (err) {
     console.error('Error processing route data:', err);
     if (window.appErrorHandler) {
-      window.appErrorHandler.handleError('ROUTE', 'processing-failed', {
+      window.appErrorHandler.handleError(ErrorTypes.ROUTE, 'processing-failed', {
         message: err.message
       });
     }
@@ -1505,11 +1483,34 @@ function initializeAppUI() {
   
 	  // Initialize map
 	  try {
-	    map = L.map('map').setView(DEFAULT_COORDS, 15);
+	    window.map = L.map('map').setView(DEFAULT_COORDS, 15);
 	    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
 	      attribution: '&copy; OpenStreetMap contributors'
-	    }).addTo(map);
+	    }).addTo(window.map);
+    
 	    appState.mapInitialized = true;
+    
+	    // Set up error handling after map is initialized
+	    if (typeof setupMapErrorHandling === 'function') {
+	      setupMapErrorHandling();
+	    }
+    
+	    // Add direction controls
+	    addDirectionControls();
+
+	    // Load route and POI data
+	    Promise.all([
+	      tryLoadRouteData(),
+	      tryLoadPoiData()
+	    ]).catch(error => {
+	      console.error('Failed to load initial data:', error);
+	      if (window.appErrorHandler) {
+	        window.appErrorHandler.handleError('DATA', 'initial-load-failed', {
+	          message: error.message
+	        });
+	      }
+	    });
+    
 	  } catch (error) {
 	    console.error('Failed to initialize map:', error);
 	    if (window.appErrorHandler) {
@@ -1517,33 +1518,7 @@ function initializeAppUI() {
 	        message: error.message
 	      });
 	    }
-	    return;
 	  }
-
-	  // Add direction controls
-	  addDirectionControls();
-
-	  // Set up geolocation with user interaction
-	  if (window.setupGeolocationWithErrorHandling) {
-	    // Use the error handling version from app-claude.js
-	    window.setupGeolocationWithErrorHandling();
-	  } else {
-	    // Fallback to basic version
-	    setupGeolocationWithErrorHandling();
-	  }
-
-	  // Load route and POI data
-	  Promise.all([
-	    tryLoadRouteData(),
-	    tryLoadPoiData()
-	  ]).catch(error => {
-	    console.error('Failed to load initial data:', error);
-	    if (window.appErrorHandler) {
-	      window.appErrorHandler.handleError('DATA', 'initial-load-failed', {
-	        message: error.message
-	      });
-	    }
-	  });
 	}
 	
 

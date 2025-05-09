@@ -829,36 +829,28 @@ function retryPoiLoad() {
 function setupMapErrorHandling() {
   const errorHandler = window.appErrorHandler;
   
-  // Create a function to check for map initialization
+  // Wait for map to be initialized
   const checkAndSetupMap = () => {
-    if (window.map) {
+    // Check if map exists and is a Leaflet map instance
+    if (window.map && typeof window.map.on === 'function') {
       try {
-        // Handle map tile loading errors
         window.map.on('tileerror', (error) => {
-          errorHandler.handleError(ErrorTypes.MAP, 'tile-load-failed', {
-            url: error.tile,
-            error: error.error
-          });
+          if (errorHandler) {
+            errorHandler.handleError(ErrorTypes.MAP, 'tile-load-failed', {
+              url: error.tile,
+              error: error.error
+            });
+          }
         });
-
-        // Handle overall rendering issues
-        const canvas = document.createElement('canvas');
-        const gl = canvas.getContext('webgl') || canvas.getContext('experimental-webgl');
-        if (!gl) {
-          errorHandler.handleError(ErrorTypes.MAP, 'webgl-not-supported', {
-            message: 'Your device does not support WebGL mapping'
-          });
-        }
       } catch (e) {
         console.warn('Error setting up map error handling:', e);
       }
     } else {
-      // If map isn't initialized yet, try again in 100ms
+      // Try again in 100ms if map isn't ready
       setTimeout(checkAndSetupMap, 100);
     }
   };
 
-  // Start checking for map initialization
   checkAndSetupMap();
 }
 
