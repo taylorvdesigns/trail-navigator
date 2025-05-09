@@ -209,57 +209,85 @@ function clusterPOIs(pois) {
 
 // Helper function to render nav items (clusters or individual POIs)
 function renderNavItems(container, items, isAhead) {
-  items.forEach(item => {
-    const speed = MODE_SPEEDS[currentMode];
-    
-    // Check if it's a cluster or individual POI
-    const isCluster = item.items !== undefined;
-    
-    // Ensure we have valid numbers for our calculations, using 0 as fallback
-    const distance = typeof item._currentDistance === 'number' ? item._currentDistance : 0;
-    const lateralDist = typeof item._lateralDistance === 'number' ? item._lateralDistance : 0;
-    const hours = distance / speed;
-    const timeStr = toMinutesStr(hours);
-    
-    if (isCluster) {
-      // Render cluster row
-      container.insertAdjacentHTML('beforeend', `
-        <div class="poi-row cluster-row" data-tag="${item.tag}">
-          <div class="poi-name">
-            <i class="fas fa-layer-group"></i> ${item.name} (${item.items.length})
-          </div>
-          <div class="poi-times">
-            <span class="poi-distance">${distance.toFixed(1)} mi</span>
-            <span class="poi-time">${timeStr}</span>
-          </div>
-        </div>
-      `);
-    } else {
-      // Determine distance display format with null/undefined checks
-      let distanceDisplay;
-      if (typeof distance === 'number') {
-        if (lateralDist > 0.1) {
-          distanceDisplay = `${distance.toFixed(1)} mi (${lateralDist.toFixed(1)} mi off trail)`;
-        } else {
-          distanceDisplay = `${distance.toFixed(1)} mi`;
-        }
-      } else {
-        distanceDisplay = 'Distance unavailable';
-      }
+  // Clear existing content
+  container.innerHTML = '';
 
-      container.insertAdjacentHTML('beforeend', `
-        <div class="poi-row" data-id="${item.id}">
-          <div class="poi-name">
-            ${item.name} ${getCategoryIcons(item.categories || [])}
-          </div>
-          <div class="poi-times">
-            <span class="poi-distance">${distanceDisplay}</span>
-            <span class="poi-time">${timeStr}</span>
-          </div>
-        </div>
-      `);
+  // Group items by category
+  const groups = {};
+  items.forEach(item => {
+    const category = item.categories?.[0]?.name || 'Other';
+    if (!groups[category]) {
+      groups[category] = [];
     }
+    groups[category].push(item);
   });
+
+  // Render each group
+  Object.entries(groups).forEach(([category, groupItems]) => {
+    const groupDiv = document.createElement('div');
+    groupDiv.className = 'poi-group';
+    
+    // Create group header
+    const headerDiv = document.createElement('div');
+    headerDiv.className = 'poi-group-header';
+    headerDiv.innerHTML = `
+      <div class="group-title">
+        <i class="fas fa-layer-group"></i>
+        ${category} (${groupItems.length})
+      </div>
+      <div class="group-distance">
+        ${(Math.min(...groupItems.map(i => i._currentDistance || Infinity))).toFixed(1)} mi
+      </div>
+    `;
+
+    // Create collapsible content
+    const contentDiv = document.createElement('div');
+    contentDiv.className = 'poi-group-content hidden';
+    
+    // Add items to the group
+    groupItems.forEach(item => {
+      const itemDiv = document.createElement('div');
+      itemDiv.className = 'poi-row';
+      itemDiv.dataset.id = item.id;
+      
+      // Format distance display
+      let distanceDisplay = item._currentDistance?.toFixed(1) + ' mi';
+      if (item._lateralDistance > 0.1) {
+        distanceDisplay += ` (${item._lateralDistance.toFixed(1)} mi off trail)`;
+      }
+      
+      itemDiv.innerHTML = `
+        <div class="poi-name">
+          ${item.name} ${getCategoryIcons(item.categories || [])}
+        </div>
+        <div class="poi-times">
+          <span class="poi-distance">${distanceDisplay}</span>
+          <span class="poi-time">${toMinutesStr(item._currentDistance / MODE_SPEEDS[currentMode])}</span>
+        </div>
+      `;
+      contentDiv.appendChild(itemDiv);
+    });
+
+    // Add click handler for group header
+    headerDiv.addEventListener('click', () => {
+      contentDiv.classList.toggle('hidden');
+      headerDiv.classList.toggle('expanded');
+    });
+
+    groupDiv.appendChild(headerDiv);
+    groupDiv.appendChild(contentDiv);
+    container.appendChild(groupDiv);
+  });
+
+  // Add event listeners for POI clicks
+  container.querySelectorAll('.poi-row[data-id]').forEach(row => {
+    row.addEventListener('click', () => {
+      const id = +row.dataset.id;
+      const dest = poiData.find(d => d.id === id);
+      if (dest) showDetail(dest);
+    });
+  });
+}
 
   // Add event listeners
   function clearExistingListeners(container) {
@@ -279,7 +307,7 @@ function renderNavItems(container, items, isAhead) {
     const clone = row.cloneNode(true);
     row.parentNode.replaceChild(clone, row);
   });
-}
+
 
 // Function to handle cluster clicks
 function showClusterDetail(tag) {
@@ -741,23 +769,34 @@ function setupGeolocationWithErrorHandling() {
     return;
   }
 
-  // Add a button to request location
-  const locationBtn = document.createElement('button');
-  locationBtn.innerHTML = '<i class="fas fa-location-arrow"></i> Enable Location';
-  locationBtn.className = 'location-button';
-  locationBtn.addEventListener('click', () => {
-    navigator.geolocation.watchPosition(
-      handlePositionUpdate,
-      handlePositionError,
-      { enableHighAccuracy: true, timeout: 10000, maximumAge: 30000 }
-    );
-    locationBtn.style.display = 'none';
-  });
-  
-  document.querySelector('.map-controls')?.appendChild(locationBtn);
+  // Create a location button if it doesn't exist
+  if (!document.querySelector('.location-button')) {
+    const locationBtn = document.createElement('button');
+    locationBtn.className = 'location-button';
+    locationBtn.innerHTML = '<i class="fas fa-location-arrow"></i> Enable Location';
+    locationBtn.addEventListener('click', () => {
+      navigator.geolocation.watchPosition(
+        handlePositionUpdate,
+        handlePositionError,
+        { enableHighAccuracy: true, timeout: 10000, maximumAge: 30000 }
+      );
+      locationBtn.style.display = 'none';
+    });
+
+    // Add button to the map container
+    const mapContainer = document.getElementById('map');
+    if (mapContainer) {
+      mapContainer.appendChild(locationBtn);
+    }
+  }
 }
 
 function handlePositionUpdate(pos) {
+  if (!map) {
+    console.warn('Map not initialized yet');
+    return;
+  }
+
   const coords = [pos.coords.latitude, pos.coords.longitude];
 
   try {
@@ -773,10 +812,9 @@ function handlePositionUpdate(pos) {
       userBearing = getBearing(lastPos, coords);
     }
     lastPos = coords;
-    appState.hasPosition = true;
 
-    // Only update nav view if we have all required data
-    if (isReadyForNavUpdate()) {
+    // Only try to update nav view if route is loaded
+    if (routeLine) {
       updateNavView();
     }
 
@@ -1226,7 +1264,8 @@ function handleNavRowClick(evt) {
 }
 
 // ─── 6) ERROR HANDLING ─────────────────────────────────────────────────
-function initErrorHandling() {
+// app-claude.js is handling this
+/* function initErrorHandling() {
   const ErrorTypes = {
     GEOLOCATION: 'GEOLOCATION',
     ROUTE: 'ROUTE',
@@ -1322,6 +1361,8 @@ function initErrorHandling() {
     }
   };
 }
+
+*/
 
 // ─── 7) INITIALIZATION ───────────────────────────────────────────────
 function initializeAppUI() {
@@ -1443,10 +1484,7 @@ function initializeAppUI() {
 
 	// Main initialization function
 	function initApp() {
-	  // Initialize error handling
-	  initErrorHandling();
-
-	  // Initialize UI components
+	  // Initialize UI components first
 	  initializeAppUI();
   
 	  // Initialize map
@@ -1469,8 +1507,14 @@ function initializeAppUI() {
 	  // Add direction controls
 	  addDirectionControls();
 
-	  // Start geolocation tracking
-	  setupGeolocationWithErrorHandling();
+	  // Set up geolocation with user interaction
+	  if (window.setupGeolocationWithErrorHandling) {
+	    // Use the error handling version from app-claude.js
+	    window.setupGeolocationWithErrorHandling();
+	  } else {
+	    // Fallback to basic version
+	    setupGeolocationWithErrorHandling();
+	  }
 
 	  // Load route and POI data
 	  Promise.all([
@@ -1488,6 +1532,9 @@ function initializeAppUI() {
 	
 
 
-	// Start the app when DOM is loaded
-	document.addEventListener('DOMContentLoaded', initApp);
+	// Start the app when DOM is loaded, but after error handling is initialized
+	document.addEventListener('DOMContentLoaded', () => {
+	  // Wait a brief moment to ensure error handling is initialized
+	  setTimeout(initApp, 100);
+	});
 	

@@ -52,6 +52,11 @@ function ensureRequiredFunctions() {
 // ----- MODIFY THE initErrorHandling FUNCTION -----
 
 function initErrorHandling() {
+  // Only initialize if not already done
+  if (window.appErrorHandler) {
+    console.log('Error handling already initialized');
+    return window.appErrorHandler;
+  }
   // Ensure required functions exist first
   ensureRequiredFunctions();
   
@@ -477,13 +482,20 @@ class ErrorHandler {
 
 // ─── 3) GEOLOCATION ERROR HANDLING ─────────────────────────────────────────────
 function setupGeolocationWithErrorHandling() {
-  const errorHandler = window.appErrorHandler;
-  
-  if (!navigator.geolocation) {
-    errorHandler.handleError(ErrorTypes.LOCATION, 2, { 
-      message: 'Geolocation is not supported by your browser' 
-    });
-    promptManualEntryPoint();
+  if (!window.navigator.geolocation) {
+    if (window.appErrorHandler) {
+      window.appErrorHandler.handleError(ErrorTypes.LOCATION, 2, {
+        message: 'Geolocation is not supported by your browser'
+      });
+    }
+    if (window.promptManualEntryPoint) {
+      window.promptManualEntryPoint();
+    }
+    return;
+  }
+
+  // If main app already set up geolocation, don't override it
+  if (window._geolocationInitialized) {
     return;
   }
 

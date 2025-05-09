@@ -470,6 +470,135 @@ html, body {
 }
 
 
+.poi-group {
+    margin-bottom: 8px;
+    border-radius: 8px;
+    overflow: hidden;
+    background: rgba(255, 255, 255, 0.05);
+  }
+
+  .poi-group-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 12px;
+    cursor: pointer;
+    background: rgba(0, 119, 204, 0.1);
+    transition: background-color 0.2s;
+  }
+
+  .poi-group-header:hover {
+    background: rgba(0, 119, 204, 0.2);
+  }
+
+  .poi-group-header.expanded {
+    background: rgba(0, 119, 204, 0.3);
+  }
+
+  .group-title {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .group-title i {
+    color: #0077CC;
+  }
+
+  .poi-group-content {
+    max-height: 0;
+    overflow: hidden;
+    transition: max-height 0.3s ease-out;
+  }
+
+  .poi-group-content.hidden {
+    max-height: 0;
+  }
+
+  .poi-group-content:not(.hidden) {
+    max-height: 500px;
+  }
+
+  .poi-row {
+    padding: 10px 12px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+    cursor: pointer;
+    transition: background-color 0.2s;
+  }
+
+  .poi-row:hover {
+    background: rgba(255, 255, 255, 0.05);
+  }
+
+  .poi-row:last-child {
+    border-bottom: none;
+  }
+
+  .poi-times {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 4px;
+    font-size: 0.9em;
+  }
+
+  .poi-distance {
+    color: #0077CC;
+  }
+
+  .poi-time {
+    color: #666;
+  }
+
+  /* Add loading state styles */
+  .loading-indicator {
+    display: none;
+    text-align: center;
+    padding: 20px;
+    color: #666;
+  }
+
+  .loading .loading-indicator {
+    display: block;
+  }
+
+  /* Add transition animations */
+  .fade-enter {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+
+  .fade-enter-active {
+    opacity: 1;
+    transform: translateY(0);
+    transition: opacity 0.3s, transform 0.3s;
+  }
+  
+  .location-button {
+      position: absolute;
+      top: 10px;
+      right: 10px;
+      z-index: 1000;
+      padding: 10px 15px;
+      background: white;
+      border: none;
+      border-radius: 4px;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 14px;
+    }
+
+    .location-button:hover {
+      background: #f0f0f0;
+    }
+
+    .location-button i {
+      color: #0077CC;
+    }
+
 
 /* ─── Responsive Tweaks ──────────────────────────────────────────── */
 @media (max-width: 600px) {
