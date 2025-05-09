@@ -1,4 +1,5 @@
 // ─── 0) GLOBAL STATE & MAP SETUP ─────────────────────────────────────
+let map = null;
 let userMarker     = null;
 let routeLatLngs   = [];
 let routeLine      = null;
@@ -27,6 +28,29 @@ let tabMap, tabNav, tabList;
 let aheadList, behindList, entryList;
 let detailTitle, detailImg, detailDesc, detailDistance;
 let changeEntryBtn, closeDetailBtn, entryClose;
+
+// Add at the top of your file with other global variables
+const appState = {
+  mapInitialized: false,
+  routeLoaded: false,
+  poiLoaded: false,
+  hasPosition: false
+};
+
+// Add a function to check if we're ready to update the nav
+function isReadyForNavUpdate() {
+  const missing = [];
+  if (!lastPos) missing.push('lastPos');
+  if (!poiData?.length) missing.push('poiData');
+  if (!routeLine) missing.push('routeLine');
+  
+  if (missing.length > 0) {
+    console.debug('Not ready for nav update. Missing:', missing.join(', '));
+    return false;
+  }
+  return true;
+}
+
 
 // Constants
 const DEFAULT_COORDS = [40.785091, -73.968285];
@@ -63,19 +87,55 @@ const baseEntryPoints = [
 ];
 
 // Initialize map
-const map = L.map('map').setView(DEFAULT_COORDS, 15);
-L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-  attribution: '&copy; OpenStreetMap contributors'
-}).addTo(map);
+function initializeMap() {
+  try {
+    map = L.map('map', {
+      center: DEFAULT_COORDS,
+      zoom: 15,
+      zoomControl: true
+    });
+    
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      attribution: '&copy; OpenStreetMap contributors'
+    }).addTo(map);
+
+    return true;
+  } catch (error) {
+    console.error('Failed to initialize map:', error);
+    if (window.appErrorHandler) {
+      window.appErrorHandler.handleError('MAP', 'initialization-failed', {
+        message: error.message
+      });
+    }
+    return false;
+  }
+}
 
 // ─── 1) HELPER FUNCTIONS ─────────────────────────────────────────────
 // helper
+function isMapReady() {
+  if (!map) {
+    console.warn('Map not initialized');
+    return false;
+  }
+  return true;
+}
+
 function toMinutesStr(hours) {
   return Math.round(hours * 60) + ' min';
 }
 
 // Bearing calculations
 function getBearing(start, end) {
+  // Validate inputs
+  if (!Array.isArray(start) || !Array.isArray(end) || 
+      start.length !== 2 || end.length !== 2 ||
+      !start.every(n => typeof n === 'number') ||
+      !end.every(n => typeof n === 'number')) {
+    console.warn('Invalid coordinates provided to getBearing');
+    return 0;
+  }
+  
   const toRad = d => d * Math.PI/180;
   const toDeg = r => r * 180/Math.PI;
   const [lat1, lon1] = start.map(toRad);
@@ -99,10 +159,6 @@ function haversineDistance([lat1, lon1], [lat2, lon2]) {
   return 2 * R * Math.asin(Math.sqrt(a));
 }
 
-// Convert time to minutes string
-function toMinutesStr(hours) {
-  return Math.round(hours * 60) + ' min';
-}
 
 // Helper to render category icons
 function getCategoryIcons(categories = []) {
@@ -206,19 +262,22 @@ function renderNavItems(container, items, isAhead) {
   });
 
   // Add event listeners
-  container.querySelectorAll('.poi-row[data-id]').forEach(row => {
-    row.addEventListener('click', () => {
-      const id = +row.dataset.id;
-      const dest = poiData.find(d => d.id === id);
-      if (dest) showDetail(dest);
+  function clearExistingListeners(container) {
+    const rows = container.querySelectorAll('.poi-row[data-id]');
+    rows.forEach(row => {
+      const clone = row.cloneNode(true);
+      row.parentNode.replaceChild(clone, row);
     });
-  });
+  }
 
-  container.querySelectorAll('.cluster-row').forEach(row => {
-    row.addEventListener('click', () => {
-      const tag = row.dataset.tag;
-      showClusterDetail(tag);
-    });
+  // Then in the renderNavItems function, before adding new listeners:
+  clearExistingListeners(container);
+
+  // Same for cluster rows:
+  const clusterRows = container.querySelectorAll('.cluster-row');
+  clusterRows.forEach(row => {
+    const clone = row.cloneNode(true);
+    row.parentNode.replaceChild(clone, row);
   });
 }
 
@@ -330,14 +389,23 @@ function resetToAutoDirection() {
 
 // Modify updateUserTrailOrientation to respect manual override
 function updateUserTrailOrientation(currentPos) {
-  // Skip automatic updates if manual override is active
-  if (directionOverrideActive) return userTrailDirection;
+  // Only skip updates if we have a valid manual direction
+  if (directionOverrideActive && userTrailDirection !== null) {
+    return userTrailDirection;
+  }
   
-  // Rest of the function remains the same
-  if (!routeLine || !currentPos) return null;
+  if (!routeLine || !currentPos) {
+    return null;
+  }
   
   const userPt = turf.point([currentPos[1], currentPos[0]]);
   const snapped = turf.nearestPointOnLine(routeLine, userPt, { units: 'kilometers' });
+  
+  if (!snapped || typeof snapped.properties.location !== 'number') {
+    console.warn('Failed to snap to route, keeping current direction');
+    return userTrailDirection;
+  }
+  
   const currentFraction = snapped.properties.location;
   
   if (prevTrailPosition !== null) {
@@ -347,18 +415,22 @@ function updateUserTrailOrientation(currentPos) {
     }
   } 
   else if (userBearing !== null) {
-    // Bearing-based calculation as before
+    // Bearing-based calculation with added validation
     const coordIndex = snapped.properties.index;
-    if (coordIndex < routeLatLngs.length - 1) {
+    if (coordIndex !== undefined && coordIndex < routeLatLngs.length - 1) {
       const trailBefore = routeLatLngs[Math.max(0, coordIndex)];
       const trailAfter = routeLatLngs[Math.min(routeLatLngs.length - 1, coordIndex + 1)];
-      const trailBearing = getBearing(trailBefore, trailAfter);
-      const bearingDiff = Math.abs(userBearing - trailBearing);
-      const normalizedDiff = Math.min(bearingDiff, 360 - bearingDiff);
-      userTrailDirection = (normalizedDiff < 90) ? 1 : -1;
-      updateDirectionIndicator();
+      
+      if (trailBefore && trailAfter) {
+        const trailBearing = getBearing(trailBefore, trailAfter);
+        const bearingDiff = Math.abs(userBearing - trailBearing);
+        const normalizedDiff = Math.min(bearingDiff, 360 - bearingDiff);
+        userTrailDirection = (normalizedDiff < 90) ? 1 : -1;
+        updateDirectionIndicator();
+      }
     }
   }
+  
   updateDirectionButtons();
   prevTrailPosition = currentFraction;
   return userTrailDirection;
@@ -507,7 +579,7 @@ function updateDirectionButtons() {
 // ─── 3) DATA LOADING FUNCTIONS ───────────────────────────────────────
 // Load route data from RWGPS
 function tryLoadRouteData() {
-  fetch(ROUTE_URL, {
+  return fetch(ROUTE_URL, {
     headers: {
       'x-rwgps-api-key': API_KEY,
       'x-rwgps-auth-token': AUTH_TOKEN
@@ -533,14 +605,26 @@ function tryLoadRouteData() {
 // Process loaded route data
 function processRouteData(data) {
   try {
-    // Draw polyline
+    if (!data?.route?.track_points || !Array.isArray(data.route.track_points)) {
+      throw new Error('Invalid route data: missing or invalid track points');
+    }
+
     const pts = data.route.track_points;
-    routeLatLngs = pts.map(p => [p.y, p.x]);
-    
+    if (pts.length < 2) {
+      throw new Error('Invalid route data: need at least 2 points to draw a route');
+    }
+
+    routeLatLngs = pts.map(p => {
+      if (!p?.x || !p?.y) {
+        throw new Error('Invalid track point: missing coordinates');
+      }
+      return [p.y, p.x];
+    });
+
     if (window.routeLine) {
       map.removeLayer(window.routeLine);
     }
-    
+
     const polyline = L.polyline(routeLatLngs, { weight: 4, color: '#0077CC' }).addTo(map);
     map.fitBounds(routeLatLngs);
 
@@ -552,24 +636,26 @@ function processRouteData(data) {
     document.getElementById('trail-header').textContent = tn;
     const navName = document.getElementById('nav-trail-name');
     if (navName) navName.textContent = tn;
-	
- // Extract endpoint names from data if available, or use defaults
-    // This would depend on your data structure, adapt as needed
+
+    // Update endpoints
     trailEndpoints.start = data.route.start_name || "Travelers Rest";
     trailEndpoints.end = data.route.end_name || "Conestee Park";
-	
-// Update direction controls if they exist
+
+    appState.routeLoaded = true;
+
+    // Update direction controls if they exist
     if (document.getElementById('direction-start')) {
       updateDirectionButtons();
     }
     
-    // Update views if we have position data
-    if (lastPos) {
+    // Only update nav view if we have all required data
+    if (isReadyForNavUpdate()) {
       updateNavView();
     }
     
     // Initialize entry points now that we have the route
     renderEntryList();
+
   } catch (err) {
     console.error('Error processing route data:', err);
     if (window.appErrorHandler) {
@@ -582,41 +668,57 @@ function processRouteData(data) {
 
 // Load POI data from WordPress
 function tryLoadPoiData() {
-  fetch('https://srtmaps.elev8maps.com/wp-json/geodir/v2/places?per_page=100')
+  return fetch('https://srtmaps.elev8maps.com/wp-json/geodir/v2/places?per_page=100')
     .then(r => {
       if (!r.ok) throw new Error(`GeoDir error ${r.status}`);
       return r.json();
     })
     .then(places => {
-      // Map each WP place into our poiData, now including a unique `id`
-      poiData = places.map(p => ({
-        id:          p.id,
-        name:        p.title.rendered,
-        coords:      [+p.latitude, +p.longitude],
-        description: p.content.raw,
-        image:       p.featured_image?.[0]?.source_url || '',
-        tags:        (p.post_tags     || []).map(t => ({ slug: t.slug, name: t.name })),
-        categories:  (p.post_category || []).map(c => ({
-                      id:   c.id,
-                      name: c.name,
-                      slug: c.slug.replace(/^\d+-/, '')
-                    }))
-                    .filter(cat => cat.slug !== 'business')
-      }));
+      try {
+        // Map each WP place into our poiData
+        poiData = places.map(p => ({
+          id: p.id,
+          name: p.title.rendered,
+          coords: [+p.latitude, +p.longitude],
+          description: p.content.raw,
+          image: p.featured_image?.[0]?.source_url || '',
+          tags: (p.post_tags || []).map(t => ({ slug: t.slug, name: t.name })),
+          categories: (p.post_category || [])
+            .map(c => ({
+              id: c.id,
+              name: c.name,
+              slug: c.slug.replace(/^\d+-/, '')
+            }))
+            .filter(cat => cat.slug !== 'business')
+        }));
 
-      // Add markers to the map
-      places.forEach(p => {
-        const lat = parseFloat(p.latitude),
-              lng = parseFloat(p.longitude);
-        if (isNaN(lat) || isNaN(lng)) return;
-        L.marker([lat, lng])
-          .addTo(map)
-          .bindPopup(`<strong>${p.title.rendered}</strong>`);
-      });
+        // Add markers to the map if it's initialized
+        if (map) {
+          places.forEach(p => {
+            const lat = parseFloat(p.latitude),
+                  lng = parseFloat(p.longitude);
+            if (isNaN(lat) || isNaN(lng)) return;
+            L.marker([lat, lng])
+              .addTo(map)
+              .bindPopup(`<strong>${p.title.rendered}</strong>`);
+          });
+        }
 
-      // Update views
-      updateNavView();
-      renderListView();
+        appState.poiLoaded = true;
+        
+        // Only update nav view if we have all required data
+        if (isReadyForNavUpdate()) {
+          updateNavView();
+        }
+
+      } catch (error) {
+        console.error('Error processing POI data:', error);
+        if (window.appErrorHandler) {
+          window.appErrorHandler.handleError('POI', 'processing-failed', {
+            message: error.message
+          });
+        }
+      }
     })
     .catch(err => {
       console.error("Failed to load POI data:", err);
@@ -639,42 +741,53 @@ function setupGeolocationWithErrorHandling() {
     return;
   }
 
-  navigator.geolocation.watchPosition(
-    handlePositionUpdate,
-    handlePositionError,
-    { enableHighAccuracy: true, timeout: 10000, maximumAge: 30000 }
-  );
+  // Add a button to request location
+  const locationBtn = document.createElement('button');
+  locationBtn.innerHTML = '<i class="fas fa-location-arrow"></i> Enable Location';
+  locationBtn.className = 'location-button';
+  locationBtn.addEventListener('click', () => {
+    navigator.geolocation.watchPosition(
+      handlePositionUpdate,
+      handlePositionError,
+      { enableHighAccuracy: true, timeout: 10000, maximumAge: 30000 }
+    );
+    locationBtn.style.display = 'none';
+  });
+  
+  document.querySelector('.map-controls')?.appendChild(locationBtn);
 }
 
 function handlePositionUpdate(pos) {
-  if (!routeLine) return;
   const coords = [pos.coords.latitude, pos.coords.longitude];
 
-  // Always update/move your marker
-  if (!userMarker) {
-    userMarker = L.marker(coords).addTo(map).bindPopup('You are here').openPopup();
-  } else {
-    userMarker.setLatLng(coords);
-  }
+  try {
+    // Create or update user marker
+    if (!userMarker) {
+      userMarker = L.marker(coords).addTo(map);
+    } else {
+      userMarker.setLatLng(coords);
+    }
 
-  // If we have a last position, then check lateral offset
-  if (lastPos) {
-    const userPt = turf.point([coords[1], coords[0]]);
-    const snapped = turf.nearestPointOnLine(routeLine, userPt, { units: 'kilometers' });
-    const [lng, lat] = snapped.geometry.coordinates;
-    const lateralKm = haversineDistance(coords, [lat, lng]);
+    // Update last position and bearing
+    if (lastPos) {
+      userBearing = getBearing(lastPos, coords);
+    }
+    lastPos = coords;
+    appState.hasPosition = true;
 
-    // If we're far from the trail and haven't chosen entry, show entry modal
-    if (!hasManualEntry && lateralKm > 0.152) {
-      entryOverlay.style.display = 'block';
-      return;
+    // Only update nav view if we have all required data
+    if (isReadyForNavUpdate()) {
+      updateNavView();
+    }
+
+  } catch (error) {
+    console.error('Error updating user position:', error);
+    if (window.appErrorHandler) {
+      window.appErrorHandler.handleError('POSITION', 'update-failed', {
+        message: error.message
+      });
     }
   }
-
-  // Update position and bearing
-  if (lastPos) userBearing = getBearing(lastPos, coords);
-  lastPos = coords;
-  updateNavView();
 }
 
 function handlePositionError(err) {
@@ -697,7 +810,10 @@ function promptManualEntryPoint() {
 // ─── 5) VIEW UPDATE FUNCTIONS ──────────────────────────────────────────
 // Update the relevant part of the updateNavView function (around line 745):
 function updateNavView() {
-  if (!lastPos || !poiData.length || !routeLine) return;
+  if (!isReadyForNavUpdate()) {
+    console.debug('Missing data: lastPos, poiData, or routeLine');
+    return;
+  }
 
   const aheadList = document.getElementById('ahead-list');
   const behindList = document.getElementById('behind-list');
@@ -722,14 +838,14 @@ function updateNavView() {
   const totalTrailLength = turf.length(routeLine, { units: 'miles' });
 
   console.log('Trail length:', totalTrailLength.toFixed(2), 'miles');
-  console.log('User position:', userDistance.toFixed(2), 'miles from TR');
+  console.log('User position:', userDistance.toFixed(2), 'miles from start');
 
   // Process POIs with distance calculations
   data.forEach(dest => {
     try {
       const poiPt = turf.point([dest.coords[1], dest.coords[0]]);
       const snapped = turf.nearestPointOnLine(routeLine, poiPt, { units: 'miles' });
-      
+
       const poiDistance = snapped.properties.location;
       const alongTrailDist = Math.abs(poiDistance - userDistance);
       const lateralDist = turf.distance(
@@ -742,6 +858,8 @@ function updateNavView() {
       dest._lateralDistance = lateralDist;
       dest._alongTrailDistance = alongTrailDist;
       dest._actualPosition = poiDistance;
+
+      console.log(`POI: ${dest.name}, Distance: ${dest._currentDistance.toFixed(2)} mi`);
     } catch (error) {
       console.error(`Error calculating distance for ${dest.name}:`, error);
       dest._currentDistance = Infinity;
@@ -754,9 +872,9 @@ function updateNavView() {
 
   data.forEach(dest => {
     if (dest._currentDistance === Infinity) return;
-    
+
     const poiDistance = dest._actualPosition;
-    
+
     if (directionOverrideActive && userTrailDirection !== null) {
       if (userTrailDirection === 1) {
         if (poiDistance > userDistance) {
@@ -772,7 +890,7 @@ function updateNavView() {
         }
       }
     } else {
-      if (dest._currentDistance <= 2) {
+      if (dest._currentDistance <= 2) { // Adjust threshold as needed
         ahead.push(dest);
       } else {
         behind.push(dest);
@@ -783,93 +901,50 @@ function updateNavView() {
   ahead.sort((a, b) => a._currentDistance - b._currentDistance);
   behind.sort((a, b) => a._currentDistance - b._currentDistance);
 
-// Get clustered results
+  console.log('Ahead POIs:', ahead);
+  console.log('Behind POIs:', behind);
+
+  // Get clustered results
   const aheadResult = clusterPOIs(ahead);
   const behindResult = clusterPOIs(behind);
 
-  // Generate HTML for ahead section - showing only group headers
+  console.log('Ahead clusters:', aheadResult);
+  console.log('Behind clusters:', behindResult);
+
+  // Generate HTML for ahead section
   let aheadHtml = '';
-  
-  // Check if clusters exist and handle them
-  if (aheadResult && aheadResult.clusters) {
-    aheadResult.clusters.forEach(cluster => {
-      if (!cluster || !cluster.items) return; // Skip invalid clusters
-      
-      const groupSlug = cluster.tag;
+  if (aheadResult.length > 0) {
+    aheadResult.forEach(cluster => {
       aheadHtml += `
-        <div class="poi-row header-row" data-group="${groupSlug}">
-          <span class="poi-name">
-            <i class="fas fa-layer-group"></i>
-            ${cluster.name} (${cluster.items.length})
-          </span>
-          <span class="poi-distance">
-            ${cluster._distance.toFixed(2)} mi
-          </span>
+        <div class="poi-row">
+          <span class="poi-name">${cluster.name} (${cluster.pois.length} POIs)</span>
+          <span class="poi-distance">${cluster.distance.toFixed(2)} mi</span>
         </div>
       `;
     });
+  } else {
+    aheadHtml = '<div class="poi-row">No destinations ahead</div>';
   }
 
-  // Add solo POIs after clusters
-  if (aheadResult && aheadResult.solos) {
-    aheadResult.solos.forEach(poi => {
-      if (!poi) return; // Skip invalid POIs
-      
-      aheadHtml += `
-        <div class="poi-row" data-id="${poi.id}">
-          <span class="poi-name">
-            ${poi.name} ${getCategoryIcons(poi.categories || [])}
-          </span>
-          <span class="poi-distance">
-            ${(poi._currentDistance || 0).toFixed(2)} mi
-          </span>
-        </div>
-      `;
-    });
-  }
-
-  // Generate HTML for behind section - same pattern with null checks
+  // Generate HTML for behind section
   let behindHtml = '';
-  
-  if (behindResult && behindResult.clusters) {
-    behindResult.clusters.forEach(cluster => {
-      if (!cluster || !cluster.items) return; // Skip invalid clusters
-      
-      const groupSlug = cluster.tag;
+  if (behindResult.length > 0) {
+    behindResult.forEach(cluster => {
       behindHtml += `
-        <div class="poi-row header-row" data-group="${groupSlug}">
-          <span class="poi-name">
-            <i class="fas fa-layer-group"></i>
-            ${cluster.name} (${cluster.items.length})
-          </span>
-          <span class="poi-distance">
-            ${cluster._distance.toFixed(2)} mi
-          </span>
+        <div class="poi-row">
+          <span class="poi-name">${cluster.name} (${cluster.pois.length} POIs)</span>
+          <span class="poi-distance">${cluster.distance.toFixed(2)} mi</span>
         </div>
       `;
     });
+  } else {
+    behindHtml = '<div class="poi-row">No destinations behind</div>';
   }
 
-  if (behindResult && behindResult.solos) {
-    behindResult.solos.forEach(poi => {
-      if (!poi) return; // Skip invalid POIs
-      
-      behindHtml += `
-        <div class="poi-row" data-id="${poi.id}">
-          <span class="poi-name">
-            ${poi.name} ${getCategoryIcons(poi.categories || [])}
-          </span>
-          <span class="poi-distance">
-            ${(poi._currentDistance || 0).toFixed(2)} mi
-          </span>
-        </div>
-      `;
-    });
-  }
-
-  // Update the containers
-  aheadList.innerHTML = aheadHtml || 'No destinations ahead';
-  behindList.innerHTML = behindHtml || 'No destinations behind';
+  // Update the DOM
+  aheadList.innerHTML = aheadHtml;
+  behindList.innerHTML = behindHtml;
+}
 
   // Add click handlers for groups to switch to filtered list view
   document.querySelectorAll('.poi-row[data-group]').forEach(row => {
@@ -897,7 +972,7 @@ function updateNavView() {
       }
     });
   });
-}
+
 
 // Modify renderListView to accept a tag filter
 function renderListView(tagFilter = null) {
@@ -1370,19 +1445,45 @@ function initializeAppUI() {
 	function initApp() {
 	  // Initialize error handling
 	  initErrorHandling();
-  
+
 	  // Initialize UI components
 	  initializeAppUI();
-	  
-  	  // Call this in your initializeAppUI function
-  	  addDirectionControls();
   
+	  // Initialize map
+	  try {
+	    map = L.map('map').setView(DEFAULT_COORDS, 15);
+	    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+	      attribution: '&copy; OpenStreetMap contributors'
+	    }).addTo(map);
+	    appState.mapInitialized = true;
+	  } catch (error) {
+	    console.error('Failed to initialize map:', error);
+	    if (window.appErrorHandler) {
+	      window.appErrorHandler.handleError('MAP', 'initialization-failed', {
+	        message: error.message
+	      });
+	    }
+	    return;
+	  }
+
+	  // Add direction controls
+	  addDirectionControls();
+
 	  // Start geolocation tracking
 	  setupGeolocationWithErrorHandling();
-  
+
 	  // Load route and POI data
-	  tryLoadRouteData();
-	  tryLoadPoiData();
+	  Promise.all([
+	    tryLoadRouteData(),
+	    tryLoadPoiData()
+	  ]).catch(error => {
+	    console.error('Failed to load initial data:', error);
+	    if (window.appErrorHandler) {
+	      window.appErrorHandler.handleError('DATA', 'initial-load-failed', {
+	        message: error.message
+	      });
+	    }
+	  });
 	}
 	
 
