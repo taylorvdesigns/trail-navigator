@@ -212,6 +212,22 @@ function renderNavItems(container, items, isAhead) {
   // Clear existing content
   container.innerHTML = '';
 
+  // Move clearExistingListeners inside here where it has access to container
+  function clearExistingListeners() {
+    const rows = container.querySelectorAll('.poi-row[data-id]');
+    rows.forEach(row => {
+      const clone = row.cloneNode(true);
+      row.parentNode.replaceChild(clone, row);
+    });
+
+    // Clear cluster rows too
+    const clusterRows = container.querySelectorAll('.cluster-row');
+    clusterRows.forEach(row => {
+      const clone = row.cloneNode(true);
+      row.parentNode.replaceChild(clone, row);
+    });
+  }
+
   // Group items by category
   const groups = {};
   items.forEach(item => {
@@ -1534,7 +1550,12 @@ function initializeAppUI() {
 
 	// Start the app when DOM is loaded, but after error handling is initialized
 	document.addEventListener('DOMContentLoaded', () => {
-	  // Wait a brief moment to ensure error handling is initialized
+	  // Initialize error handling first
+	  if (!window.appErrorHandler) {
+	    initErrorHandling();
+	  }
+  
+	  // Then initialize the app with a slight delay to ensure error handling is ready
 	  setTimeout(initApp, 100);
 	});
 	

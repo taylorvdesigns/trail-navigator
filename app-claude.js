@@ -829,27 +829,37 @@ function retryPoiLoad() {
 function setupMapErrorHandling() {
   const errorHandler = window.appErrorHandler;
   
-  // Handle map tile loading errors
-  map.on('tileerror', (error) => {
-    errorHandler.handleError(ErrorTypes.MAP, 'tile-load-failed', {
-      url: error.tile,
-      error: error.error
-    });
-  });
-  
-  // Handle overall rendering issues
-  try {
-    // Add a check for WebGL capability if using vector tiles
-    const canvas = document.createElement('canvas');
-    const gl = canvas.getContext('webgl') || canvas.getContext('experimental-webgl');
-    if (!gl) {
-      errorHandler.handleError(ErrorTypes.MAP, 'webgl-not-supported', {
-        message: 'Your device does not support WebGL mapping'
-      });
+  // Create a function to check for map initialization
+  const checkAndSetupMap = () => {
+    if (window.map) {
+      try {
+        // Handle map tile loading errors
+        window.map.on('tileerror', (error) => {
+          errorHandler.handleError(ErrorTypes.MAP, 'tile-load-failed', {
+            url: error.tile,
+            error: error.error
+          });
+        });
+
+        // Handle overall rendering issues
+        const canvas = document.createElement('canvas');
+        const gl = canvas.getContext('webgl') || canvas.getContext('experimental-webgl');
+        if (!gl) {
+          errorHandler.handleError(ErrorTypes.MAP, 'webgl-not-supported', {
+            message: 'Your device does not support WebGL mapping'
+          });
+        }
+      } catch (e) {
+        console.warn('Error setting up map error handling:', e);
+      }
+    } else {
+      // If map isn't initialized yet, try again in 100ms
+      setTimeout(checkAndSetupMap, 100);
     }
-  } catch (e) {
-    console.warn('WebGL check failed', e);
-  }
+  };
+
+  // Start checking for map initialization
+  checkAndSetupMap();
 }
 
 function updateUserPosition(coords, geoCoords) {
