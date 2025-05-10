@@ -553,6 +553,8 @@ function refreshFilterUI() {
 
 // Set active tab
 function setActiveTab(tabBtn) {
+  if (tabBtn.classList.contains('active')) return; // Don't do anything if already active
+  
   [tabMap, tabNav, tabList].forEach(b => b.classList.remove('active'));
   tabBtn.classList.add('active');
   lastActiveTab = tabBtn;
@@ -1267,37 +1269,47 @@ function updateNavView() {
       });
     } else {
       // Grouped view when no filter
-      const grouped = clusterPOIs(pois);
-      grouped.forEach(cluster => {
-        const groupDiv = document.createElement('div');
-        groupDiv.className = 'poi-group';
-        
-        const headerDiv = document.createElement('div');
-        headerDiv.className = 'poi-group-header';
-        headerDiv.innerHTML = `
-          <div class="group-title">
-            <i class="fas fa-layer-group"></i>
-            ${cluster.name} (${cluster.pois.length})
-          </div>
-          <div class="group-distance">
-            ${cluster.distance.toFixed(1)} mi
-          </div>
-        `;
+		const grouped = clusterPOIs(pois);
+		  grouped.forEach(cluster => {
+		    const groupDiv = document.createElement('div');
+		    groupDiv.className = 'poi-group';
+    
+		    const headerDiv = document.createElement('div');
+		    headerDiv.className = 'poi-group-header';
+		    headerDiv.innerHTML = `
+		      <div class="group-title">
+		        <i class="fas fa-layer-group"></i>
+		        ${cluster.name} (${cluster.pois.length})
+		      </div>
+		      <div class="group-distance">
+		        ${cluster.distance.toFixed(1)} mi
+		      </div>
+		    `;
 
-        // Add click handler to switch to list view
-		headerDiv.addEventListener('click', (e) => {
-		  e.preventDefault();
-		  e.stopPropagation();
-		  const groupName = cluster.name;
-		  console.log('Group clicked, about to call showListViewWithFilter with:', groupName); // Debug log
-		  showListViewWithFilter(groupName);
-		  updateUrlWithFilter(groupName);
-		});
+		    // Fix the click handler here
+			headerDiv.addEventListener('click', (e) => {
+			  e.preventDefault();
+			  e.stopPropagation();
+  
+			  const groupName = cluster.name;
+  
+			  // Set filter
+			  window.currentGroupFilter = groupName;
+  
+			  // Switch to list view
+			  listOverlay.style.display = 'flex';
+			  navOverlay.style.display = 'none';
+			  setActiveTab(tabList);
+  
+			  // Render filtered list and update URL
+			  renderListView(groupName);
+			  updateUrlWithFilter(groupName);
+			});
 
-        groupDiv.appendChild(headerDiv);
-        container.appendChild(groupDiv);
-      });
-    }
+		    groupDiv.appendChild(headerDiv);
+		    container.appendChild(groupDiv);
+		  });
+		}
   };
 
   // Render both sections
@@ -1377,16 +1389,11 @@ function processAndSortPOIs(data) {
 
 
 // Modify renderListView to accept a tag filter
-function renderListView(groupFilter = window.currentGroupFilter) {  // Modified default parameter
-  // For debugging
+function renderListView(groupFilter = null) {
   console.log('renderListView called with groupFilter:', groupFilter);
-  console.log('currentGroupFilter is:', window.currentGroupFilter);
   
   const container = document.getElementById('list-content');
   if (!container) return;
-  
-  // Use the persisted filter if none provided
-  groupFilter = groupFilter || window.currentGroupFilter;
   
   // Clear the container
   container.innerHTML = '';
@@ -1401,88 +1408,148 @@ function renderListView(groupFilter = window.currentGroupFilter) {  // Modified 
     );
   }
   
-  // Apply group filter if provided
-  if (groupFilter) {
-    console.log('Filtering by group:', groupFilter);  // Debug log
-    filteredData = filteredData.filter(dest => {
-      // Check if the POI has any tags
-      if (!dest.tags || !dest.tags.length) return false;
-      
-      // Check for matching tag
-      return dest.tags.some(tag => 
-        tag.name.toLowerCase() === groupFilter.toLowerCase()
-      );
-    });
-    console.log('Filtered data length:', filteredData.length);  // Debug log
-
-    // Show back button and group title
-    const backButton = document.createElement('button');
-    backButton.className = 'back-button';
-    backButton.innerHTML = '<i class="fas fa-arrow-left"></i> Back to all groups';
-	backButton.addEventListener('click', () => {
-	  window.currentGroupFilter = null;  // Clear the filter
-	  updateUrlWithFilter(null);
-	  renderListView();
-	});
-    container.appendChild(backButton);
-
-    const titleDiv = document.createElement('h2');
-    titleDiv.className = 'group-title';
-    titleDiv.textContent = groupFilter;
-    container.appendChild(titleDiv);
-  }
-
-  // Sort by distance if available
-  if (lastPos) {
-    filteredData.sort((a, b) => 
-      (a._currentDistance || Infinity) - (b._currentDistance || Infinity)
-    );
-  }
-
   // Create list container
   const listDiv = document.createElement('div');
   listDiv.className = 'poi-list';
 
-  if (filteredData.length === 0) {
-    // Show empty state
-    const emptyDiv = document.createElement('div');
-    emptyDiv.className = 'empty-state';
-    emptyDiv.textContent = groupFilter ? 
-      `No destinations found in ${groupFilter}` : 
-      'No destinations found';
-    listDiv.appendChild(emptyDiv);
-  } else {
-    // Render POIs
-    filteredData.forEach(poi => {
-      const itemDiv = document.createElement('div');
-      itemDiv.className = 'poi-row';
-      itemDiv.dataset.id = poi.id;
-
-      let distanceDisplay = '';
-      if (typeof poi._currentDistance === 'number') {
-        distanceDisplay = `
-          <span class="poi-distance">${poi._currentDistance.toFixed(1)} mi</span>
-          <span class="poi-time ${currentMode}">
-            ${toMinutesStr(poi._currentDistance / MODE_SPEEDS[currentMode])}
-          </span>
-        `;
-      }
-
-      itemDiv.innerHTML = `
-        <div class="poi-name">
-          ${poi.name} ${getCategoryIcons(poi.categories || [])}
-        </div>
-        <div class="poi-times">
-          ${distanceDisplay}
-        </div>
-      `;
-
-      itemDiv.addEventListener('click', () => showDetail(poi));
-      listDiv.appendChild(itemDiv);
+  // If we have a group filter, show filtered POIs in a flat list
+  if (groupFilter) {
+    // Filter to just this group's POIs
+    filteredData = filteredData.filter(dest => {
+      if (!dest.tags?.length) return false;
+      return dest.tags.some(tag => 
+        tag.name.toLowerCase() === groupFilter.toLowerCase()
+      );
     });
+
+    // Show back button
+    const backButton = document.createElement('button');
+    backButton.className = 'back-button';
+    backButton.innerHTML = '<i class="fas fa-arrow-left"></i> Back to all groups';
+    backButton.addEventListener('click', () => {
+      window.currentGroupFilter = null;
+      updateUrlWithFilter(null);
+      renderListView(null);  // This will show all groups
+    });
+    container.appendChild(backButton);
+
+    // Add group title
+    const titleDiv = document.createElement('h2');
+    titleDiv.className = 'group-title';
+    titleDiv.textContent = groupFilter;
+    container.appendChild(titleDiv);
+
+    // Show filtered POIs in a flat list
+    if (filteredData.length === 0) {
+      const emptyDiv = document.createElement('div');
+      emptyDiv.className = 'empty-state';
+      emptyDiv.textContent = `No destinations found in ${groupFilter}`;
+      listDiv.appendChild(emptyDiv);
+    } else {
+      // Render POIs in a flat list
+      filteredData.forEach(poi => {
+        const itemDiv = document.createElement('div');
+        itemDiv.className = 'poi-row';
+        itemDiv.dataset.id = poi.id;
+
+        let distanceDisplay = '';
+        if (typeof poi._currentDistance === 'number') {
+          distanceDisplay = `
+            <span class="poi-distance">${poi._currentDistance.toFixed(1)} mi</span>
+            <span class="poi-time ${currentMode}">
+              ${toMinutesStr(poi._currentDistance / MODE_SPEEDS[currentMode])}
+            </span>
+          `;
+        }
+
+        itemDiv.innerHTML = `
+          <div class="poi-name">
+            ${poi.name} ${getCategoryIcons(poi.categories || [])}
+          </div>
+          <div class="poi-times">
+            ${distanceDisplay}
+          </div>
+        `;
+
+        itemDiv.addEventListener('click', () => showDetail(poi));
+        listDiv.appendChild(itemDiv);
+      });
+    }
+  } else {
+    // No filter - show all POIs grouped
+    const grouped = clusterPOIs(filteredData);
+    
+    if (grouped.length === 0) {
+      const emptyDiv = document.createElement('div');
+      emptyDiv.className = 'empty-state';
+      emptyDiv.textContent = 'No destinations found';
+      listDiv.appendChild(emptyDiv);
+    } else {
+      // Render grouped POIs
+      grouped.forEach(cluster => {
+        const groupDiv = document.createElement('div');
+        groupDiv.className = 'poi-group';
+        
+        // Add group header
+        const headerDiv = document.createElement('div');
+        headerDiv.className = 'poi-group-header';
+        headerDiv.innerHTML = `
+          <div class="group-title">
+            <i class="fas fa-layer-group"></i>
+            ${cluster.name} (${cluster.pois.length})
+          </div>
+          <div class="group-distance">
+            ${cluster.distance.toFixed(1)} mi
+          </div>
+        `;
+
+        // Add click handler to switch to filtered view
+        headerDiv.addEventListener('click', (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          window.currentGroupFilter = cluster.name;
+          renderListView(cluster.name);
+          updateUrlWithFilter(cluster.name);
+        });
+
+        groupDiv.appendChild(headerDiv);
+
+        // Add POIs for this group
+        cluster.pois.forEach(poi => {
+          const itemDiv = document.createElement('div');
+          itemDiv.className = 'poi-row';
+          itemDiv.dataset.id = poi.id;
+
+          let distanceDisplay = '';
+          if (typeof poi._currentDistance === 'number') {
+            distanceDisplay = `
+              <span class="poi-distance">${poi._currentDistance.toFixed(1)} mi</span>
+              <span class="poi-time ${currentMode}">
+                ${toMinutesStr(poi._currentDistance / MODE_SPEEDS[currentMode])}
+              </span>
+            `;
+          }
+
+          itemDiv.innerHTML = `
+            <div class="poi-name">
+              ${poi.name} ${getCategoryIcons(poi.categories || [])}
+            </div>
+            <div class="poi-times">
+              ${distanceDisplay}
+            </div>
+          `;
+
+          itemDiv.addEventListener('click', () => showDetail(poi));
+          groupDiv.appendChild(itemDiv);
+        });
+
+        listDiv.appendChild(groupDiv);
+      });
+    }
   }
 
   container.appendChild(listDiv);
+
 
 
 // Add some CSS for the new elements if not already present
