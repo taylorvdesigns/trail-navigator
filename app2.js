@@ -1390,15 +1390,12 @@ function processAndSortPOIs(data) {
 
 // Modify renderListView to accept a tag filter
 function renderListView(groupFilter = null) {
-  console.log('renderListView called with groupFilter:', groupFilter);
-  
   const container = document.getElementById('list-content');
   if (!container) return;
   
   // Clear the container
   container.innerHTML = '';
 
-  // Filter data first
   let filteredData = [...poiData];
   
   // Apply category filter if active
@@ -1407,12 +1404,11 @@ function renderListView(groupFilter = null) {
       dest.categories?.some(c => c.slug === activeFilter)
     );
   }
-  
-  // Create list container
+
   const listDiv = document.createElement('div');
   listDiv.className = 'poi-list';
 
-  // If we have a group filter, show filtered POIs in a flat list
+  // GROUP FILTER MODE - Show flat list of filtered POIs
   if (groupFilter) {
     // Filter to just this group's POIs
     filteredData = filteredData.filter(dest => {
@@ -1422,31 +1418,30 @@ function renderListView(groupFilter = null) {
       );
     });
 
-    // Show back button
+    // Show back button and title
     const backButton = document.createElement('button');
     backButton.className = 'back-button';
     backButton.innerHTML = '<i class="fas fa-arrow-left"></i> Back to all groups';
     backButton.addEventListener('click', () => {
       window.currentGroupFilter = null;
       updateUrlWithFilter(null);
-      renderListView(null);  // This will show all groups
+      renderListView(null);
     });
     container.appendChild(backButton);
 
-    // Add group title
     const titleDiv = document.createElement('h2');
     titleDiv.className = 'group-title';
     titleDiv.textContent = groupFilter;
     container.appendChild(titleDiv);
 
-    // Show filtered POIs in a flat list
+    // Show filtered POIs in flat list
     if (filteredData.length === 0) {
       const emptyDiv = document.createElement('div');
       emptyDiv.className = 'empty-state';
       emptyDiv.textContent = `No destinations found in ${groupFilter}`;
       listDiv.appendChild(emptyDiv);
     } else {
-      // Render POIs in a flat list
+      // Flat list of POIs
       filteredData.forEach(poi => {
         const itemDiv = document.createElement('div');
         itemDiv.className = 'poi-row';
@@ -1475,8 +1470,9 @@ function renderListView(groupFilter = null) {
         listDiv.appendChild(itemDiv);
       });
     }
-  } else {
-    // No filter - show all POIs grouped
+  } 
+  // ALL GROUPS MODE - Show grouped POIs
+  else {
     const grouped = clusterPOIs(filteredData);
     
     if (grouped.length === 0) {
@@ -1490,7 +1486,6 @@ function renderListView(groupFilter = null) {
         const groupDiv = document.createElement('div');
         groupDiv.className = 'poi-group';
         
-        // Add group header
         const headerDiv = document.createElement('div');
         headerDiv.className = 'poi-group-header';
         headerDiv.innerHTML = `
@@ -1502,15 +1497,6 @@ function renderListView(groupFilter = null) {
             ${cluster.distance.toFixed(1)} mi
           </div>
         `;
-
-        // Add click handler to switch to filtered view
-        headerDiv.addEventListener('click', (e) => {
-          e.preventDefault();
-          e.stopPropagation();
-          window.currentGroupFilter = cluster.name;
-          renderListView(cluster.name);
-          updateUrlWithFilter(cluster.name);
-        });
 
         groupDiv.appendChild(headerDiv);
 
@@ -1549,6 +1535,7 @@ function renderListView(groupFilter = null) {
   }
 
   container.appendChild(listDiv);
+
 
 
 
