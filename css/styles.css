@@ -402,6 +402,13 @@ html, body {
   border-bottom: 1px solid #eee;
 }
 
+.empty-state {
+  text-align: center;
+  padding: 2rem;
+  color: #666;
+  font-style: italic;
+}
+
 /* Update poi-group-header for better clickability */
 .poi-group-header {
   cursor: pointer;
