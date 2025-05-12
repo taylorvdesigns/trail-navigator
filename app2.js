@@ -250,28 +250,31 @@ function renderGroupedPOIs(pois, container) {
 
     // Fix the click handler syntax
     headerDiv.addEventListener('click', (e) => {
-      e.preventDefault();
-      e.stopPropagation();
-      
-      const groupName = cluster.name;
-      
-      // Set filter
-      window.currentGroupFilter = groupName;
-      
-      // Switch to list view
-      listOverlay.style.display = 'flex';
-      navOverlay.style.display = 'none';
-      setActiveTab(tabList);
-      
-      // Render filtered list and update URL
-      renderListView(groupName);
-      updateUrlWithFilter(groupName);
+        e.preventDefault();
+        e.stopPropagation();
+        
+        const groupName = cluster.name;
+        
+        // Set filter
+        window.currentGroupFilter = groupName;
+        
+        // Switch to list view
+        listOverlay.style.display = 'flex';
+        navOverlay.style.display = 'none';
+        setActiveTab(tabList);
+        
+        // Render filtered list and update URL
+        renderListView(groupName);
+        updateUrlWithFilter(groupName);
     });
 
+    // Append headerDiv to groupDiv
     groupDiv.appendChild(headerDiv);
+    // Append groupDiv to container
     container.appendChild(groupDiv);
-  });
-}
+  }); // Close the forEach loop
+} // Close the function
+
 
 // Helper to render category icons
 function getCategoryIcons(categories = []) {
@@ -491,19 +494,47 @@ function showClusterDetail(tag) {
 // ─── 2) UI FUNCTIONS ─────────────────────────────────────────────────
 
 function showListViewWithFilter(groupName) {
-  // For debugging
-  console.log('showListViewWithFilter called with:', groupName);
-  
-  // Store the group filter in a variable that persists
-  window.currentGroupFilter = groupName;  // Add this line
-  
-  // Switch to list view
-  listOverlay.style.display = 'flex';
-  navOverlay.style.display = 'none';
-  setActiveTab(tabList);
-  
-  // Apply the filter
-  renderListView(groupName);  // Make sure we pass the groupName
+    console.log('showListViewWithFilter called with:', groupName);
+    
+    if (!groupName) {
+        console.warn('No group name provided to showListViewWithFilter');
+        return;
+    }
+    
+    // Store the group filter
+    window.currentGroupFilter = groupName;
+    
+    // Ensure we have POI data before proceeding
+    if (!poiData || !poiData.length) {
+        console.log('Waiting for POI data before showing filtered view...');
+        const checkData = setInterval(() => {
+            if (poiData && poiData.length > 0) {
+                clearInterval(checkData);
+                displayFilteredView(groupName);
+            }
+        }, 100);
+        return;
+    }
+    
+    // Pass the groupName directly to displayFilteredView
+    displayFilteredView(groupName);
+}
+
+// Helper function to handle the actual display logic
+function displayFilteredView(groupName) {
+    // Switch to list view
+    listOverlay.style.display = 'flex';
+    navOverlay.style.display = 'none';
+    
+    // Set active tab before rendering
+    setActiveTab(tabList);
+    
+    // Update URL without causing a page reload
+    updateUrlWithFilter(groupName);
+    
+    // Ensure we're passing the groupName directly to renderListView
+    console.log('Rendering filtered view for:', groupName);
+    renderListView(groupName); // Pass groupName directly
 }
 
 function updateUrlWithFilter(filter) {
@@ -516,16 +547,36 @@ function updateUrlWithFilter(filter) {
   window.history.pushState({}, '', url);
 }
 
-// Add to your initialization code
 function handleUrlParams() {
-  const urlParams = new URLSearchParams(window.location.search);
-  const groupFilter = urlParams.get('group');
-  if (groupFilter) {
-    urlFilter = decodeURIComponent(groupFilter).toLowerCase();
-    showListViewWithFilter(urlFilter);
-  }
+    try {
+        const urlParams = new URLSearchParams(window.location.search);
+        const groupFilter = urlParams.get('group');
+        if (groupFilter) {
+            const decodedFilter = decodeURIComponent(decodeURIComponent(groupFilter));
+            console.log('Decoded group filter from URL:', decodedFilter);
+            
+            // Set the filter immediately
+            window.currentGroupFilter = decodedFilter;
+            
+            // Wait for POI data to be loaded
+            if (!poiData || !poiData.length) {
+                console.log('Waiting for POI data to load before applying filter...');
+                const checkData = setInterval(() => {
+                    if (poiData && poiData.length > 0) {
+                        clearInterval(checkData);
+                        console.log('POI data loaded, showing filtered view for:', decodedFilter);
+                        showListViewWithFilter(decodedFilter);
+                    }
+                }, 100);
+            } else {
+                console.log('POI data already loaded, showing filtered view for:', decodedFilter);
+                showListViewWithFilter(decodedFilter);
+            }
+        }
+    } catch (error) {
+        console.error('Error handling URL parameters:', error);
+    }
 }
-
 
 // Create filter buttons
 function makeFilterButtons(targetContainer) {  // Rename parameter to avoid conflicts
@@ -567,11 +618,36 @@ function refreshFilterUI() {
 
 // Set active tab
 function setActiveTab(tabBtn) {
-  if (tabBtn.classList.contains('active')) return; // Don't do anything if already active
-  
-  [tabMap, tabNav, tabList].forEach(b => b.classList.remove('active'));
-  tabBtn.classList.add('active');
-  lastActiveTab = tabBtn;
+    if (tabBtn.classList.contains('active')) return; // Don't do anything if already active
+    
+    // Remove active class from all tabs
+    [tabMap, tabNav, tabList].forEach(b => b.classList.remove('active'));
+    tabBtn.classList.add('active');
+    lastActiveTab = tabBtn;
+
+    // Update display of overlays and handle group filter
+    if (tabBtn === tabMap) {
+        navOverlay.style.display = 'none';
+        listOverlay.style.display = 'none';
+        if (window.currentGroupFilter) {
+            window.currentGroupFilter = null;
+            updateUrlWithFilter(null);
+        }
+    } else if (tabBtn === tabNav) {
+        navOverlay.style.display = 'flex';
+        listOverlay.style.display = 'none';
+        if (window.currentGroupFilter) {
+            window.currentGroupFilter = null;
+            updateUrlWithFilter(null);
+        }
+    } else if (tabBtn === tabList) {
+        navOverlay.style.display = 'none';
+        listOverlay.style.display = 'flex';
+        // Only render if we're not already showing the list view
+        if (!listOverlay.style.display === 'flex') {
+            renderListView();
+        }
+    }
 }
 
 function toggleTrailDirection() {
@@ -1403,13 +1479,32 @@ function processAndSortPOIs(data) {
 
 // Modify renderListView to accept a tag filter
 function renderListView(groupFilter = null) {
-  console.log('renderListView called with groupFilter:', groupFilter);
-  
-  const container = document.getElementById('list-content');
-  if (!container) return;
-  
-  // Clear the container
-  container.innerHTML = '';
+    // Use provided group filter or fall back to stored filter
+    const activeGroupFilter = groupFilter || window.currentGroupFilter;
+    
+    console.log('renderListView called with groupFilter:', groupFilter);
+    console.log('Active group filter:', activeGroupFilter);
+    
+    // Check if data is loaded
+    if (!poiData || !poiData.length) {
+        console.warn('POI data not yet loaded');
+        return;
+    }
+    
+    console.log('Available tags:', [...new Set(poiData.map(poi => poi.tags?.[0]?.name).filter(Boolean))]);
+    
+    const container = document.getElementById('list-content');
+    if (!container) return;
+    
+    // Prevent re-rendering if nothing has changed
+    if (container.dataset.currentFilter === activeGroupFilter) {
+        console.log('Skip re-render - filter unchanged');
+        return;
+    }
+    
+    // Clear the container
+    container.innerHTML = '';
+    container.dataset.currentFilter = activeGroupFilter || '';
 
   // Create main list container
   const listDiv = document.createElement('div');
@@ -1434,19 +1529,23 @@ function renderListView(groupFilter = null) {
     titleDiv.textContent = groupFilter;
     container.appendChild(titleDiv);
 
+    console.log('Filtering POIs for group:', groupFilter);
     // Filter POIs for this group
     let filteredData = poiData.filter(poi => {
-      return poi.tags?.some(tag => 
-        tag.name.toLowerCase() === groupFilter.toLowerCase()
-      );
+        const poiGroup = poi.tags?.[0]?.name || 'Untagged';
+        const matches = poiGroup.toLowerCase() === groupFilter.toLowerCase();
+        console.log('Checking POI:', poi.name, 'Group:', poiGroup, 'Matches:', matches);
+        return matches;
     });
 
     // Apply category filter if active
     if (activeFilter) {
-      filteredData = filteredData.filter(dest =>
-        dest.categories?.some(c => c.slug === activeFilter)
-      );
+        filteredData = filteredData.filter(dest =>
+            dest.categories?.some(c => c.slug === activeFilter)
+        );
     }
+
+    console.log('Filtered data count:', filteredData.length);
 
     // Show POIs in a simple list
     if (filteredData.length === 0) {
@@ -1497,14 +1596,18 @@ function renderListView(groupFilter = null) {
         
         const headerDiv = document.createElement('div');
         headerDiv.className = 'poi-group-header';
+        
+        // Only show distance if it exists and is a number
+        const distanceDisplay = typeof cluster.distance === 'number' 
+          ? `<div class="group-distance">${cluster.distance.toFixed(1)} mi</div>`
+          : '';
+
         headerDiv.innerHTML = `
           <div class="group-title">
             <i class="fas fa-layer-group"></i>
             ${cluster.name} (${cluster.pois.length})
           </div>
-          <div class="group-distance">
-            ${cluster.distance.toFixed(1)} mi
-          </div>
+          ${distanceDisplay}
         `;
 
         groupDiv.appendChild(headerDiv);
@@ -1544,6 +1647,7 @@ function renderListView(groupFilter = null) {
   }
 
   container.appendChild(listDiv);
+
 
   // Add styles for back button if they don't exist
   if (!document.getElementById('list-view-styles')) {
@@ -1904,57 +2008,61 @@ function initializeAppUI() {
 
 	// Main initialization function
 	function initApp() {
-	  initializationInProgress = true;
+	    initializationInProgress = true;
 
-	  // Initialize UI components first
-	  initializeAppUI();
-  
-	  // Initialize map
-	  try {
-	    window.map = L.map('map').setView(DEFAULT_COORDS, 15);
-	    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-	      attribution: '&copy; OpenStreetMap contributors'
-	    }).addTo(window.map);
+	    // Initialize UI components first
+	    initializeAppUI();
     
-	    appState.mapInitialized = true;
-    
-	    // Set up error handling after map is initialized
-	    if (typeof setupMapErrorHandling === 'function') {
-	      setupMapErrorHandling();
-	    }
-    
-	    // Add direction controls
-	    addDirectionControls();
+	    // Initialize map
+	    try {
+	        window.map = L.map('map').setView(DEFAULT_COORDS, 15);
+	        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+	            attribution: '&copy; OpenStreetMap contributors'
+	        }).addTo(window.map);
+        
+	        appState.mapInitialized = true;
+        
+	        // Set up error handling after map is initialized
+	        if (typeof setupMapErrorHandling === 'function') {
+	            setupMapErrorHandling();
+	        }
+        
+	        // Add direction controls
+	        addDirectionControls();
 
-	    // Load route and POI data
-	    Promise.all([
-	      tryLoadRouteData(),
-	      tryLoadPoiData()
-	    ]).then(() => {
-	      initializationInProgress = false;
-	      // Show location prompt after data is loaded
-	      if (!lastPos && !hasManualEntry) {
-	        setupGeolocationWithErrorHandling();
-	      }
-	    }).catch(error => {
-	      console.error('Failed to load initial data:', error);
-	      initializationInProgress = false;
-	      if (window.appErrorHandler) {
-	        window.appErrorHandler.handleError('DATA', 'initial-load-failed', {
-	          message: error.message
+	        // Load route and POI data
+	        Promise.all([
+	            tryLoadRouteData(),
+	            tryLoadPoiData()
+	        ]).then(() => {
+	            initializationInProgress = false;
+            
+	            // Handle URL parameters after data is loaded
+	            handleUrlParams();
+            
+	            // Show location prompt after data is loaded
+	            if (!lastPos && !hasManualEntry) {
+	                setupGeolocationWithErrorHandling();
+	            }
+	        }).catch(error => {
+	            console.error('Failed to load initial data:', error);
+	            initializationInProgress = false;
+	            if (window.appErrorHandler) {
+	                window.appErrorHandler.handleError('DATA', 'initial-load-failed', {
+	                    message: error.message
+	                });
+	            }
 	        });
-	      }
-	    });
-    
-	  } catch (error) {
-	    console.error('Failed to initialize map:', error);
-	    initializationInProgress = false;
-	    if (window.appErrorHandler) {
-	      window.appErrorHandler.handleError('MAP', 'initialization-failed', {
-	        message: error.message
-	      });
+        
+	    } catch (error) {
+	        console.error('Failed to initialize map:', error);
+	        initializationInProgress = false;
+	        if (window.appErrorHandler) {
+	            window.appErrorHandler.handleError('MAP', 'initialization-failed', {
+	                message: error.message
+	            });
+	        }
 	    }
-	  }
 	}
 	
 /*
